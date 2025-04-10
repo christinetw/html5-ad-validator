@@ -38,7 +38,7 @@ This validator checks:
 
 1. **Clone the repo**  
    ```bash
-   git clone [https://github.com/christinetw/html5-ad-validator.git]
+   git clone https://github.com/christinetw/html5-ad-validator.git
    cd html5-ad-validator
    ```
 
