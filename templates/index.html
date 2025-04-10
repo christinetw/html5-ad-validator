@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HTML5 Ad Validator - Detailed Report</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 20px;
+    }
+    .container {
+      width: 50%;
+      margin: auto;
+    }
+    input, button {
+      margin: 10px;
+      padding: 8px;
+    }
+    #results {
+      margin-top: 20px;
+      text-align: left;
+      white-space: pre-wrap;
+      background: #f4f4f4;
+      padding: 10px;
+      border-radius: 5px;
+      display: none;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+    .warning {
+      color: orange;
+    }
+    .success {
+      color: green;
+    }
+    .info {
+      color: #333;
+      font-weight: bold;
+    }
+    .pass {
+      color: green;
+    }
+    .fail {
+      color: red;
+    }
+    .banner-preview {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .iframe-container {
+      margin-top: 10px;
+    }
+    iframe {
+      border: 1px solid #ccc;
+      display: block;
+      margin: 10px auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Upload a ZIP File for HTML Validation</h2>
+    <form id="uploadForm">
+      <input type="file" id="fileInput" accept=".zip,.html" required /><br />
+      <button type="submit" id="submitBtn">Upload & Validate</button>
+    </form>
+
+    <h3>Validation Results:</h3>
+    <div id="results"></div>
+
+    <h3>Banner Previews:</h3>
+    <div class="banner-preview" id="previewContainer"></div>
+  </div>
+
+  <script>
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    document.getElementById('uploadForm').addEventListener('submit', async function(event) {
+      event.preventDefault();
+
+      const fileInput = document.getElementById("fileInput");
+      const submitBtn = document.getElementById("submitBtn");
+      const resultsDiv = document.getElementById("results");
+      const previewContainer = document.getElementById("previewContainer");
+
+      if (fileInput.files.length === 0) {
+        alert("Please select a file to upload.");
+        return;
+      }
+
+      const uploadedFile = fileInput.files[0];
+      const fileSizeFormatted = formatFileSize(uploadedFile.size);
+
+      submitBtn.disabled = true;
+      resultsDiv.innerHTML = "";
+      resultsDiv.style.display = "block";
+      previewContainer.innerHTML = "";
+
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+
+      try {
+        const response = await fetch("http://127.0.0.1:5000/validate", {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await response.json();
+
+        // Header Info
+        resultsDiv.innerHTML = `<p class="info">📦 File Selected: <strong>${uploadedFile.name}</strong> (${fileSizeFormatted})</p>`;
+
+        if (data.file_size_kb !== undefined) {
+          const maxLimit = 150;
+          const overLimit = data.file_size_kb > maxLimit;
+          const resultText = overLimit ? `❌ File size too large (${data.file_size_kb} KB)` : `✅ File size okay (${data.file_size_kb} KB)`;
+          const sizeClass = overLimit ? "fail" : "pass";
+          resultsDiv.innerHTML += `<p class="${sizeClass}">📏 File Weight Check: ${resultText}</p>`;
+        }
+
+        if (data.validation_results) {
+          const htmlResults = data.validation_results.html;
+          const jsResults = data.validation_results.js;
+
+          // Asset Check
+          const hasMissingAssets = Object.values(htmlResults).some(r => r.errors?.some(e => e.includes("Missing assets")));
+          resultsDiv.innerHTML += `<p class="${hasMissingAssets ? 'fail' : 'pass'}">📁 Assets Check: ${hasMissingAssets ? "❌ Missing assets" : "✅ All assets present"}</p>`;
+
+          // ✅ Display banner size if available
+          const bannerSizes = Object.values(htmlResults)
+            .map(r => r.banner_size)
+            .filter(size => !!size);
+
+          if (bannerSizes.length > 0) {
+            resultsDiv.innerHTML += `<p class="info">🖼 Banner Size(s): ${bannerSizes.join(", ")}</p>`;
+          }
+
+          // HTML Validation
+          resultsDiv.innerHTML += `<p class="${Object.keys(htmlResults).length > 0 ? 'pass' : 'fail'}">📄 HTML Validation: ${Object.keys(htmlResults).length > 0 ? "✅ Checked" : "❌ Not found"}</p>`;
+
+          // JavaScript Duration/Loops (from JS errors)
+          const jsErrorMessages = [].concat(...Object.values(jsResults).map(r => r.errors));
+          const animIssue = jsErrorMessages.find(e => e.includes("Animation exceeds"));
+          const loopIssue = jsErrorMessages.find(e => e.includes("loop count exceeds"));
+
+          resultsDiv.innerHTML += `<p class="${animIssue ? 'fail' : 'pass'}">🎞 Animation Duration: ${animIssue ? `❌ ${animIssue}` : "✅ Within limit"}</p>`;
+          resultsDiv.innerHTML += `<p class="${loopIssue ? 'fail' : 'pass'}">🔁 Loop Count: ${loopIssue ? `❌ ${loopIssue}` : "✅ Within limit"}</p>`;
+        }
+
+        // Previews
+        if (data.previews && data.previews.length > 0) {
+          previewContainer.innerHTML = "<h3>Banner Previews:</h3>";
+          data.previews.forEach((previewUrl, index) => {
+              const correspondingHtmlResult = Object.entries(data.validation_results.html || {})[index]?.[1];
+              const sizeText = correspondingHtmlResult?.banner_size || "Unknown Size";
+
+              const label = document.createElement("p");
+              label.className = "info";
+              label.textContent = `🖼 Banner Size: ${sizeText}`;
+            const iframeContainer = document.createElement("div");
+            iframeContainer.classList.add("iframe-container");
+
+            const iframe = document.createElement("iframe");
+            iframe.src = previewUrl;
+            iframe.width = "100%";
+            iframe.height = "250px";
+            iframe.style.minHeight = "200px";
+
+            iframeContainer.appendChild(label);
+              iframeContainer.appendChild(iframe);
+            previewContainer.appendChild(iframeContainer);
+          });
+        }
+
+      } catch (error) {
+        console.error("Error:", error);
+        resultsDiv.innerHTML = `<p class="error">❌ An error occurred while validating.</p>`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

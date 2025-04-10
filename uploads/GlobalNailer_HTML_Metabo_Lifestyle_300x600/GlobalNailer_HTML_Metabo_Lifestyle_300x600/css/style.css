@@ -1,0 +1,75 @@
+/* #tmp{ background: no-repeat url("../assets/Template/4.jpg"); } */
+
+#bg {
+    background: no-repeat url("../assets/bg.png");
+}
+
+#logo {
+    background: no-repeat url("../assets/logo.png");
+}
+
+#f1_txt1 {
+    background: no-repeat url("../assets/f1_txt1.png");
+}
+#f2_txt1 {
+    background: no-repeat url("../assets/f2_txt1.png");
+}
+#f3_txt1 {
+    background: no-repeat url("../assets/f3_txt1.png");
+}
+#ef_txt1 {
+    background: no-repeat url("../assets/ef_txt1.png");
+}
+
+
+
+
+#product1 {
+    background: no-repeat url("../assets/product1.jpg");
+}
+#product2 {
+    background: no-repeat url("../assets/product2.jpg");
+    left: 300px;
+}
+#product3 {
+    background: no-repeat url("../assets/product3.jpg");
+    left: 300px;
+}
+#product4 {
+    background: no-repeat url("../assets/product4.jpg");
+    left: 300px;
+}
+#cta {
+    background: no-repeat url("../assets/cta.png");
+    top:-1px;
+    left:-1px;
+}
+#cta-hover {
+    background: no-repeat url("../assets/cta-hover.png");
+    top:-1px;
+    left:-1px;
+}
+#cta-logo1 {
+    background: no-repeat url("../assets/cta-logo1.png");    
+}
+#cta-logo2 {
+    background: no-repeat url("../assets/cta-logo2.png");    
+}
+#cta-logo3 {
+    background: no-repeat url("../assets/cta-logo3.png");    
+}
+
+#cta-line{
+    width: 1px;
+    height: 15.5px;
+    background-color: #08d700;
+    top: 228px;
+    left: 107px;
+}
+
+#cta-logo-hold{
+    width: 300px;
+    height: 600px;
+    overflow: hidden;
+    position: absolute;
+}

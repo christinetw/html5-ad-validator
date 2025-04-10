@@ -1,0 +1,20 @@
+/* #tmp{background: no-repeat url("../assets/tmp.png");} */
+
+#gl-bg {background-image: url('../assets/gl-bg.jpg'); transform-origin: 262.5px center;}
+#ef-hero {background-image: url('../assets/ef-hero.png');}
+#f1-hero {background-image: url('../assets/f1-hero.png');}
+
+#gl-logo1 {background-image: url('../assets/gl-logo1.png');}
+#gl-logo2 {background-image: url('../assets/gl-logo2.png');}
+
+#f1-copy1 {background-image: url('../assets/f1-copy1.png');}
+#f1-copy2 {background-image: url('../assets/f1-copy2.png');}
+
+#f2-copy1 {background-image: url('../assets/f2-copy1.png');}
+#f2-copy2 {background-image: url('../assets/f2-copy2.png');}
+
+#ef-copy1 {background-image: url('../assets/ef-copy1.png');}
+#ef-copy2 {background-image: url('../assets/ef-copy2.png');}
+#ef-copy3 {background-image: url('../assets/ef-copy3.png');}
+#ef-legal {background-image: url('../assets/ef-legal.png');}
+#ef-cta {background-image: url('../assets/ef-cta.png');}
