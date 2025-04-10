@@ -24,7 +24,7 @@ This validator checks:
 1. Upload a ZIP or HTML file.
 2. The app unpacks and analyzes the contents.
 3. It checks:
-   - Valid banner size from CSS
+   - Valid banner size from CSS/HTML
    - All required files (images, JS, etc.)
    - Animation rules (≤15s, ≤3 loops)
    - Click tracking tag
