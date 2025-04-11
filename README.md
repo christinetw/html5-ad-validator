@@ -80,6 +80,3 @@ http://your-local-ip:5000
 
 ---
 
-## 📄 License
-
-MIT — free to use and modify. Contributions welcome!
