@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="ad.size" content="width=320,height=50">
+	<link rel="icon" href="data:;base64,iVBORw0KGgo=">
+	<title>TD</title>
+	<script type="text/javascript">var clickTag = "https://www.google.com";</script>
+	<link href="css/default.css" rel="stylesheet" media="all">
+	<link href="css/style.css" rel="stylesheet" media="all">
+</head>
+
+<body>
+	<div id="viewport" class="adSize vidHid">
+
+		<div id="gl-bg1" class="gl adSize posAb topLef bgDef"></div>
+		<div id="gl-bg2" class="gl adSize posAb topLef bgDef"></div>
+		<div id="gl-hero" class="f1 adSize posAb botLef bgDef"></div>
+		<div id="gl-logo" class="gl adSize posAb topLef bgDef"></div>
+
+		<div id="f2-copy1" class="f2 f2-copy adSize posAb topLef bgDef"></div>
+		<div id="f2-copy2" class="f2 f2-copy adSize posAb topLef bgDef"></div>
+
+		<div id="f3-copy1" class="f3 f3-copy adSize posAb topLef bgDef"></div>
+		<div id="f3-copy2" class="f3 f3-copy adSize posAb topLef bgDef"></div>
+
+		<div id="ef-copy1" class="ef ef-copy adSize posAb topLef bgDef"></div>
+		<div id="ef-copy2" class="ef ef-copy adSize posAb topLef bgDef"></div>
+		<div id="ef-copy3" class="ef ef-copy adSize posAb topLef bgDef"></div>
+		<div id="ef-legal" class="ef ef-copy adSize posAb topLef bgDef"></div>
+		<div id="ef-cta" class="ef adSize posAb topLef bgDef"></div>
+
+		<!-- <div id="tmp" class="adSize posAb topLef bgDef"></div> -->
+		
+		<div id="border" class="adSize posAb topLef" ></div>
+		<a id="clickable" class="adSize posAb topLef" href="javascript:void(window.open(window.clickTag, 'blank'))"></a>
+
+	</div>
+
+	<script src="https://s0.2mdn.net/ads/studio/cached_libs/gsap_3.2.4_min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/2.1.3/easing/EasePack.min.js"></script>
+	<script src="js/libs/imagesloaded.pkgd.min.js"></script>
+	<script src="js/animation.js"></script>
+
+	<script type="text/javascript">
+		var imgloads = document.querySelectorAll('*');
+		var viewportChildren = document.getElementById('viewport').children;
+		var imgcount = 0;
+
+		for (var i = 0; i < viewportChildren.length; i++) {
+			viewportChildren[i].style.opacity = 0;
+		}
+
+		window.addEventListener("DOMContentLoaded", function () {
+			for (var i = 0; i < imgloads.length; i++) {
+				imagesLoaded(imgloads[i], { background: true }, function () {
+					imgcount++;
+					if (imgcount === imgloads.length) {
+						init();
+					}
+				})
+			}
+		}, false);
+	</script>
+</body>
+
+</html>

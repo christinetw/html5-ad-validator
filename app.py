@@ -10,10 +10,11 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"html", "zip"}
-EXPECTED_BANNER_SIZES = [(300, 250), (160, 600), (728, 90), (320, 50), (970, 250), (300, 50),(300, 600)]
+EXPECTED_BANNER_SIZES = [(300, 250), (160, 600), (728, 90), (320, 50), (970, 250), (300, 50)]
 MAX_FILE_SIZE_KB = 150  # Max allowed HTML5 ad size
 ANIMATION_MAX_DURATION = 15  # Max animation duration in seconds
 MAX_LOOP_COUNT = 3  # Max allowed loop count
+ANIMATION_WARNING_THRESHOLD = 14.8  # Threshold to show warning instead of error
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -70,7 +71,6 @@ def validate_html(file_path):
         if check_border_in_css(css_content):
             border_found = True
 
-    # Fallback: Check HTML inline styles if CSS doesn't define size
     if not banner_width or not banner_height:
         size_div = soup.find(attrs={"class": "adSize"})
         if size_div and "style" in size_div.attrs:
@@ -117,29 +117,47 @@ def validate_js(file_path):
     except Exception as e:
         results["errors"].append(f"Error reading JavaScript file {file_path}: {str(e)}")
         return results
+
     js_code = re.sub(r'//.*', '', js_code)
-    durations = re.findall(r"gsap\.to\(.*?duration:\s*(\d+\.?\d*)", js_code)
-    for duration in durations:
+
+    # Start with 0 and add durations from delayedCall
+    total_estimated_duration = 0.0
+    delayed_calls = re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)
+    for delay in delayed_calls:
         try:
-            if float(duration) > ANIMATION_MAX_DURATION:
-                results["errors"].append(f"Animation exceeds {ANIMATION_MAX_DURATION}s limit: {duration}s")
-        except ValueError:
+            total_estimated_duration += float(delay)
+        except:
             continue
+
+    # Check for ISI Scroll usage
+    isi_scroll_found = bool(re.search(r"scrollTo\s*:\s*\{[^}]*y\s*:", js_code)) or "ISIscroll" in js_code
+    scroll_speed = 0
+
+    if isi_scroll_found:
+        scroll_speed_match = re.search(r"scrollSpeed\s*=\s*(\d+(\.\d+)?)", js_code)
+        if scroll_speed_match:
+            scroll_speed = float(scroll_speed_match.group(1))
+        elif "scrollSpeed" in js_code and "creative.isi_height" in js_code:
+            scroll_speed = 10  # Default fallback
+        total_estimated_duration += scroll_speed
+
+    if total_estimated_duration > ANIMATION_MAX_DURATION:
+        results["errors"].append(
+            f"Estimated total animation duration exceeds {ANIMATION_MAX_DURATION}s: {total_estimated_duration:.1f}s"
+        )
+    elif total_estimated_duration >= ANIMATION_WARNING_THRESHOLD:
+        results["warnings"].append(
+            f"Estimated total animation duration approaching limit: {total_estimated_duration:.1f}s"
+        )
+
     loops = re.findall(r"repeat\s*:\s*(\d+|Infinity|-1)", js_code)
     for loop in loops:
         if loop in ("Infinity", "-1") or (loop.isdigit() and int(loop) > MAX_LOOP_COUNT):
             results["errors"].append(f"Animation loop count exceeds {MAX_LOOP_COUNT}: {loop}")
 
-    # Additional check for scrollTo with repeat
-    scroll_repeat_matches = re.findall(r"scrollTo\s*:\s*\{[^}]*\}\s*,\s*repeat\s*:\s*(\d+)", js_code)
-    for scroll_repeat in scroll_repeat_matches:
-        try:
-            if int(scroll_repeat) > ANIMATION_MAX_DURATION:
-                results["errors"].append(f"ISI scroll appears to exceed {ANIMATION_MAX_DURATION}s: {scroll_repeat} repeats")
-        except ValueError:
-            continue
     if "mainExit" not in js_code and "clickTag" not in js_code:
         results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit' or 'clickTag').")
+
     return results
 
 @app.route("/preview/<path:folder>/<filename>")
