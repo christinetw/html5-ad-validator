@@ -44,8 +44,11 @@ def extract_ad_size_from_css(css_file_path):
         print(f"❌ Error reading CSS file: {e}")
     return None, None
 
+def check_border_in_css(css_content):
+    return bool(re.search(r"border\s*:\s*1px\s+solid", css_content, re.IGNORECASE))
+
 def validate_html(file_path):
-    results = {"warnings": [], "errors": [], "banner_size": None}
+    results = {"warnings": [], "errors": [], "banner_size": None, "border": "❌ Missing 1px border"}
     if not os.path.exists(file_path):
         results["errors"].append(f"File {file_path} does not exist.")
         return results
@@ -55,11 +58,31 @@ def validate_html(file_path):
     missing_assets = []
     css_files = [tag["href"] for tag in soup.find_all("link", {"rel": "stylesheet"}) if "href" in tag.attrs]
     banner_width, banner_height = None, None
+    border_found = False
     for css_file in css_files:
         css_file_path = os.path.join(base_path, css_file)
+        if not os.path.exists(css_file_path):
+            continue
+        with open(css_file_path, "r", encoding="utf-8", errors="replace") as f:
+            css_content = f.read()
         if "default.css" in css_file_path:
             banner_width, banner_height = extract_ad_size_from_css(css_file_path)
-            break
+        if check_border_in_css(css_content):
+            border_found = True
+
+    # Fallback: Check HTML inline styles if CSS doesn't define size
+    if not banner_width or not banner_height:
+        size_div = soup.find(attrs={"class": "adSize"})
+        if size_div and "style" in size_div.attrs:
+            style = size_div["style"]
+            width_match = re.search(r"width\s*:\s*(\d+)px", style)
+            height_match = re.search(r"height\s*:\s*(\d+)px", style)
+            if width_match and height_match:
+                banner_width = int(width_match.group(1))
+                banner_height = int(height_match.group(1))
+
+    if border_found:
+        results["border"] = "✅ 1px border present"
     if banner_width and banner_height:
         results["banner_size"] = f"{banner_width}x{banner_height}"
         if (banner_width, banner_height) not in EXPECTED_BANNER_SIZES:
@@ -67,7 +90,8 @@ def validate_html(file_path):
                 f"Invalid banner size: {banner_width}x{banner_height}. Expected sizes: {EXPECTED_BANNER_SIZES}"
             )
     else:
-        results["warnings"].append("⚠️ Could not determine banner size from CSS.")
+        results["warnings"].append("⚠️ Could not determine banner size from CSS or HTML inline styles.")
+
     for tag in soup.find_all(["img", "script", "link"]):
         src = tag.get("src") or tag.get("href")
         if tag.name in ["script", "style"] and not src:
@@ -105,6 +129,15 @@ def validate_js(file_path):
     for loop in loops:
         if loop in ("Infinity", "-1") or (loop.isdigit() and int(loop) > MAX_LOOP_COUNT):
             results["errors"].append(f"Animation loop count exceeds {MAX_LOOP_COUNT}: {loop}")
+
+    # Additional check for scrollTo with repeat
+    scroll_repeat_matches = re.findall(r"scrollTo\s*:\s*\{[^}]*\}\s*,\s*repeat\s*:\s*(\d+)", js_code)
+    for scroll_repeat in scroll_repeat_matches:
+        try:
+            if int(scroll_repeat) > ANIMATION_MAX_DURATION:
+                results["errors"].append(f"ISI scroll appears to exceed {ANIMATION_MAX_DURATION}s: {scroll_repeat} repeats")
+        except ValueError:
+            continue
     if "mainExit" not in js_code and "clickTag" not in js_code:
         results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit' or 'clickTag').")
     return results
@@ -139,11 +172,8 @@ def validate_file():
     file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(file_path)
 
-    # ✅ Check and print file size
-    file_size_kb = os.path.getsize(file_path) / 1024  # Convert bytes to kilobytes
+    file_size_kb = os.path.getsize(file_path) / 1024
     print(f"📦 Uploaded file size: {file_size_kb:.2f} KB")
-    if file_size_kb > MAX_FILE_SIZE_KB:
-        print(f"⚠️ File size exceeds {MAX_FILE_SIZE_KB} KB limit!")
 
     preview_links = []
     validation_results = {"html": {}, "js": {}}
@@ -177,13 +207,12 @@ def validate_file():
     elif filename.endswith(".html"):
         validation_results["html"][filename] = validate_html(file_path)
         preview_links.append(f"http://127.0.0.1:5000/preview/{filename}")
-    
-    return jsonify({
-    "validation_results": validation_results,
-    "previews": preview_links,
-    "file_size_kb": round(file_size_kb, 2)  # Include file size in KB
-})
 
+    return jsonify({
+        "validation_results": validation_results,
+        "previews": preview_links,
+        "file_size_kb": round(file_size_kb, 2)
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)

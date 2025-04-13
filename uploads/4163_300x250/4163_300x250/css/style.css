@@ -1,0 +1,117 @@
+/* #tmp{ background: no-repeat url("../assets/tmp.png"); } */
+
+#gl-gradient {
+    height: 167px;
+    background-color: #624B78;
+    background: linear-gradient(180deg, rgba(98,75,120,1) 75%, rgba(43,23,61,1) 115%);
+}
+#gl-logo { background: no-repeat url("../assets/gl-logo.png"); }
+
+.pill-dissolve{ transform-origin: 245px 100px; }
+#gl-pill-dissolve1 { background: no-repeat url("../assets/gl-pill-dissolve1.png"); }
+#gl-pill-dissolve2 { background: no-repeat url("../assets/gl-pill-dissolve2.png"); }
+#gl-pill-dissolve3 { background: no-repeat url("../assets/gl-pill-dissolve3.png"); width: 315px; }
+#gl-pill-dissolve4 { background: no-repeat url("../assets/gl-pill-dissolve4.png"); width: 315px; }
+#gl-pill-dissolve5 { background: no-repeat url("../assets/gl-pill-dissolve5.png"); width: 315px; }
+#gl-pill-dissolve6 { background: no-repeat url("../assets/gl-pill-dissolve6.png"); width: 315px; }
+#gl-pill { background: no-repeat url("../assets/gl-pill.png"); }
+
+#f1-copy { background: no-repeat url("../assets/f1-copy.png"); }
+#f2-copy { background: no-repeat url("../assets/f2-copy.png"); }
+#f3-copy { background: no-repeat url("../assets/f3-copy.png"); }
+#f4-copy { background: no-repeat url("../assets/f4-copy.png"); }
+
+/* ISI */
+ul{ padding-left: 10px !important; }
+li{list-style: '• '; padding-left: 3px;}
+sup { font-size: 4px; position: relative; top: -1px; }
+.nowrap{white-space: nowrap;}
+.mrgn-top { margin-top: 5px !important; }
+.underline {text-decoration: underline;}
+.ul-sub {padding-left: 12px !important;}
+.sub-heading {
+    font-weight: bold;
+    font-size: 8px;
+    color:#fff;
+    letter-spacing: -0.5px;
+}
+#isi-con {
+    height: 83px;
+    background-color: #624B78;
+    background: linear-gradient(180deg, rgba(98,75,120,1) 50%, rgba(43,23,61,1) 160%);
+    color: #fff;
+    font-family: Arial, sans-serif;
+}
+#isi-wrapper {
+    height:67px;
+    display: flex;
+    flex-direction: column;
+    cursor:default;
+    padding-left: 10px;
+    padding-right: 5px;
+}
+#isi-heading-con {
+    height:16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: left   ;
+    background-color: #2B173D;
+    color: #fff;
+    font-size: 5px;
+    padding: 0 12px;
+}
+#isi-copy-con {
+    width:100%;
+    margin: 1px 0px;
+    height:67px;
+    overflow-y: scroll;
+	overflow-x: hidden;
+    /* background-color: yellowgreen; */
+}
+#isi-copy{
+    width:100%;
+    font-size: 7.5px;
+    line-height: 1.1;
+    display: flex;
+    flex-direction: column;
+    padding-right: 5px;
+    padding: 2px;
+    padding: 5px 5px 10px 2px;
+}
+#isi-logo-con{
+    width: 100%;
+    height:30px;
+    margin: 13px 0 4px;
+}
+#isi-logo{
+    width:60px;
+    height:100%;
+    background:no-repeat url("../assets/isi-logo.png");
+}
+/* isi scroll bar */
+#isi-copy-con::-webkit-scrollbar {
+    width: 0.35em;
+}
+#isi-copy-con::-webkit-scrollbar-track {
+    background: #624B78;
+    background: transparent;
+}
+#isi-copy-con::-webkit-scrollbar-thumb {
+    background: #2B173D; 
+    border-radius: 25px;
+}
+
+@-moz-document url-prefix(){
+    #isi-copy-con {
+        scrollbar-color: #2B173D #624B78 ;
+        scrollbar-color: #2B173D transparent ;
+        scrollbar-width: thin;
+    }
+}
+
+#viewport {
+    -moz-text-size-adjust: none;
+    -webkit-text-size-adjust: none;
+    text-size-adjust: none;
+}

@@ -44,9 +44,6 @@
     .pass {
       color: green;
     }
-    .check {
-      color: blue;
-    }
     .fail {
       color: red;
     }
@@ -124,8 +121,8 @@
         if (data.file_size_kb !== undefined) {
           const maxLimit = 150;
           const overLimit = data.file_size_kb > maxLimit;
-          const resultText = overLimit ? `(${data.file_size_kb} KB) Please verify if this meets the spec limit.` : ` File size okay (${data.file_size_kb} KB)`;
-          const sizeClass = overLimit ? "check" : "pass";
+          const resultText = overLimit ? `❌ File size too large (${data.file_size_kb} KB)` : `✅ File size okay (${data.file_size_kb} KB)`;
+          const sizeClass = overLimit ? "fail" : "pass";
           resultsDiv.innerHTML += `<p class="${sizeClass}">📏 File Weight Check: ${resultText}</p>`;
         }
 
@@ -138,7 +135,10 @@
           resultsDiv.innerHTML += `<p class="${hasMissingAssets ? 'fail' : 'pass'}">📁 Assets Check: ${hasMissingAssets ? "❌ Missing assets" : "✅ All assets present"}</p>`;
 
           // ✅ Display banner size if available
-          const bannerSizes = Object.values(htmlResults).map(r => r.banner_size).filter(size => !!size);
+          const bannerSizes = Object.values(htmlResults)
+            .map(r => r.banner_size)
+            .filter(size => !!size);
+
           if (bannerSizes.length > 0) {
             resultsDiv.innerHTML += `<p class="info">🖼 Banner Size(s): ${bannerSizes.join(", ")}</p>`;
           }
@@ -153,25 +153,18 @@
 
           resultsDiv.innerHTML += `<p class="${animIssue ? 'fail' : 'pass'}">🎞 Animation Duration: ${animIssue ? `❌ ${animIssue}` : "✅ Within limit"}</p>`;
           resultsDiv.innerHTML += `<p class="${loopIssue ? 'fail' : 'pass'}">🔁 Loop Count: ${loopIssue ? `❌ ${loopIssue}` : "✅ Within limit"}</p>`;
-
-          // Border check
-          const borderStatus = Object.values(htmlResults)[0]?.border;
-          if (borderStatus) {
-            const borderPass = borderStatus.includes("✅");
-            resultsDiv.innerHTML += `<p class="${borderPass ? 'pass' : 'fail'}">🟦 Border Check: ${borderStatus}</p>`;
-          }
         }
 
         // Previews
         if (data.previews && data.previews.length > 0) {
           previewContainer.innerHTML = "<h3>Banner Previews:</h3>";
           data.previews.forEach((previewUrl, index) => {
-            const correspondingHtmlResult = Object.entries(data.validation_results.html || {})[index]?.[1];
-            const sizeText = correspondingHtmlResult?.banner_size || "Unknown Size";
+              const correspondingHtmlResult = Object.entries(data.validation_results.html || {})[index]?.[1];
+              const sizeText = correspondingHtmlResult?.banner_size || "Unknown Size";
 
-            const label = document.createElement("p");
-            label.className = "info";
-            label.textContent = `🖼 Banner Size: ${sizeText}`;
+              const label = document.createElement("p");
+              label.className = "info";
+              label.textContent = `🖼 Banner Size: ${sizeText}`;
             const iframeContainer = document.createElement("div");
             iframeContainer.classList.add("iframe-container");
 
@@ -182,7 +175,7 @@
             iframe.style.minHeight = "200px";
 
             iframeContainer.appendChild(label);
-            iframeContainer.appendChild(iframe);
+              iframeContainer.appendChild(iframe);
             previewContainer.appendChild(iframeContainer);
           });
         }
