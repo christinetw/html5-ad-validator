@@ -18,6 +18,7 @@ This validator checks:
 - ✅ Animation time and loop count limits
 - ✅ Presence of click tracking (`clickTag` or `mainExit`)
 - ✅ Visual previews of banners
+- ✅ Border Check:1px border 
 
 ## 🧠 How It Works
 
