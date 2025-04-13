@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"html", "zip"}
-EXPECTED_BANNER_SIZES = [(300, 250), (160, 600), (728, 90), (320, 50), (970, 250), (300, 50)]
+EXPECTED_BANNER_SIZES = [(300, 250), (160, 600), (728, 90), (320, 50), (970, 250), (300, 50),(300, 600)]
 MAX_FILE_SIZE_KB = 150  # Max allowed HTML5 ad size
 ANIMATION_MAX_DURATION = 15  # Max animation duration in seconds
 MAX_LOOP_COUNT = 3  # Max allowed loop count
