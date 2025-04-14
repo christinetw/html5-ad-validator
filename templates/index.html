@@ -85,41 +85,44 @@
       if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
       return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     }
-  
+
     document.getElementById('uploadForm').addEventListener('submit', async function (event) {
       event.preventDefault();
-  
+
       const fileInput = document.getElementById("fileInput");
       const submitBtn = document.getElementById("submitBtn");
       const resultsDiv = document.getElementById("results");
       const previewContainer = document.getElementById("previewContainer");
-  
+
       if (fileInput.files.length === 0) {
         alert("Please select a file to upload.");
         return;
       }
-  
+
       const uploadedFile = fileInput.files[0];
       const fileSizeFormatted = formatFileSize(uploadedFile.size);
-  
+
       submitBtn.disabled = true;
       resultsDiv.innerHTML = "";
       resultsDiv.style.display = "block";
       previewContainer.innerHTML = "";
-  
+
       const formData = new FormData();
       formData.append("file", uploadedFile);
-  
+
       try {
         const response = await fetch("http://127.0.0.1:5000/validate", {
           method: "POST",
           body: formData
         });
-  
+
         const data = await response.json();
-  
+
+        console.log("🚨 Validation Results:", data.validation_results);
+
+
         resultsDiv.innerHTML = `<p class="info">📦 File Selected: <strong>${uploadedFile.name}</strong> (${fileSizeFormatted})</p>`;
-  
+
         if (data.file_size_kb !== undefined) {
           const maxLimit = 150;
           const overLimit = data.file_size_kb > maxLimit;
@@ -129,30 +132,48 @@
           const sizeClass = overLimit ? "check" : "pass";
           resultsDiv.innerHTML += `<p class="${sizeClass}">📏 File Weight Check: ${resultText}</p>`;
         }
-  
+
         if (data.validation_results) {
           const htmlResults = data.validation_results.html;
           const jsResults = data.validation_results.js;
-  
+
           const hasMissingAssets = Object.values(htmlResults).some(r => r.errors?.some(e => e.includes("Missing assets")));
           resultsDiv.innerHTML += `<p class="${hasMissingAssets ? 'fail' : 'pass'}">📁 Assets Check: ${hasMissingAssets ? "❌ Missing assets" : "✅ All assets present"}</p>`;
-  
+
           const bannerSizes = Object.values(htmlResults).map(r => r.banner_size).filter(size => !!size);
           if (bannerSizes.length > 0) {
             resultsDiv.innerHTML += `<p class="info">🖼 Banner Size(s): ${bannerSizes.join(", ")}</p>`;
           }
-  
+
           resultsDiv.innerHTML += `<p class="${Object.keys(htmlResults).length > 0 ? 'pass' : 'fail'}">📄 HTML Validation: ${Object.keys(htmlResults).length > 0 ? "✅ Checked" : "❌ Not found"}</p>`;
-  
+
+         Object.entries(htmlResults).forEach(([fileName, result]) => {
+         if (result.warnings && result.warnings.length > 0) {
+         result.warnings.forEach(warning => {
+         resultsDiv.innerHTML += `<p class="warning">⚠️ ${warning}</p>`;
+         });
+         }
+         });
+
+
+          // ✅ INSERTED BLOCK: Show warnings like size mismatch
+          Object.entries(htmlResults).forEach(([fileName, result]) => {
+            if (result.warnings && result.warnings.length > 0) {
+              result.warnings.forEach(warning => {
+                resultsDiv.innerHTML += `<p class="warning">⚠️ ${warning}</p>`;
+              });
+            }
+          });
+
           const jsErrors = [].concat(...Object.values(jsResults).map(r => r.errors || []));
           const jsWarnings = [].concat(...Object.values(jsResults).map(r => r.warnings || []));
-  
+
           let animIssueText = "✅ Within limit";
           let animClass = "pass";
-  
+
           const durationError = jsErrors.find(e => e.toLowerCase().includes("animation duration exceeds"));
           const durationWarning = jsWarnings.find(w => w.toLowerCase().includes("approaching limit"));
-  
+
           if (durationError) {
             animIssueText = `❌ ${durationError}`;
             animClass = "fail";
@@ -160,43 +181,43 @@
             animIssueText = `⚠️ ${durationWarning}`;
             animClass = "warning";
           }
-  
+
           resultsDiv.innerHTML += `<p class="${animClass}">🎞 Animation Duration: ${animIssueText}</p>`;
-  
+
           const loopIssue = jsErrors.find(e => e.includes("loop count exceeds"));
           resultsDiv.innerHTML += `<p class="${loopIssue ? 'fail' : 'pass'}">🔁 Loop Count: ${loopIssue ? `❌ ${loopIssue}` : "✅ Within limit"}</p>`;
-  
+
           const borderStatus = Object.values(htmlResults)[0]?.border;
           if (borderStatus) {
             const borderPass = borderStatus.includes("✅");
             resultsDiv.innerHTML += `<p class="${borderPass ? 'pass' : 'fail'}">🟦 Border Check: ${borderStatus}</p>`;
           }
         }
-  
+
         if (data.previews && data.previews.length > 0) {
           previewContainer.innerHTML = "<h3>Banner Previews:</h3>";
           data.previews.forEach((previewUrl, index) => {
             const correspondingHtmlResult = Object.entries(data.validation_results.html || {})[index]?.[1];
             const sizeText = correspondingHtmlResult?.banner_size || "Unknown Size";
-  
+
             const label = document.createElement("p");
             label.className = "info";
             label.textContent = `🖼 Banner Size: ${sizeText}`;
             const iframeContainer = document.createElement("div");
             iframeContainer.classList.add("iframe-container");
-  
+
             const iframe = document.createElement("iframe");
             iframe.src = previewUrl;
             iframe.width = "100%";
             iframe.height = "250px";
             iframe.style.minHeight = "200px";
-  
+
             iframeContainer.appendChild(label);
             iframeContainer.appendChild(iframe);
             previewContainer.appendChild(iframeContainer);
           });
         }
-  
+
       } catch (error) {
         console.error("Error:", error);
         resultsDiv.innerHTML = `<p class="error">❌ An error occurred while validating.</p>`;
@@ -205,7 +226,5 @@
       }
     });
   </script>
-  
-
 </body>
 </html>

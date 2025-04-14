@@ -37,13 +37,17 @@ def extract_ad_size_from_css(css_file_path):
     try:
         with open(css_file_path, "r", encoding="utf-8", errors="replace") as file:
             css_content = file.read()
-        width_match = re.search(r"\.adSize\s*\{\s*width:\s*(\d+)px", css_content)
-        height_match = re.search(r"\.adSize\s*\{.*height:\s*(\d+)px", css_content)
+
+        # Loosened to find width/height anywhere
+        width_match = re.search(r"width\s*:\s*(\d+)px", css_content)
+        height_match = re.search(r"height\s*:\s*(\d+)px", css_content)
+
         if width_match and height_match:
             return int(width_match.group(1)), int(height_match.group(1))
     except Exception as e:
         print(f"❌ Error reading CSS file: {e}")
     return None, None
+
 
 def check_border_in_css(css_content):
     return bool(re.search(r"border\s*:\s*1px\s+solid", css_content, re.IGNORECASE))
@@ -59,6 +63,8 @@ def validate_html(file_path):
 
     base_path = os.path.dirname(file_path)
     missing_assets = []
+    border_found = False  # 🔧 Make sure this is initialized
+
     css_files = [tag["href"] for tag in soup.find_all("link", {"rel": "stylesheet"}) if "href" in tag.attrs]
 
     css_width, css_height = None, None
@@ -96,6 +102,8 @@ def validate_html(file_path):
         results["warnings"].append(
             f"⚠️ Size mismatch: CSS says {css_width}x{css_height}, HTML inline style says {html_width}x{html_height}"
         )
+        print("✅ Size Mismatch Warning Added:", results["warnings"])
+
 
     if border_found:
         results["border"] = "✅ 1px border present"
@@ -244,6 +252,10 @@ def validate_file():
     elif filename.endswith(".html"):
         validation_results["html"][filename] = validate_html(file_path)
         preview_links.append(f"http://127.0.0.1:5000/preview/{filename}")
+
+    import pprint
+    pprint.pprint(validation_results)
+ 
 
     return jsonify({
         "validation_results": validation_results,
