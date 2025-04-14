@@ -53,24 +53,31 @@ def validate_html(file_path):
     if not os.path.exists(file_path):
         results["errors"].append(f"File {file_path} does not exist.")
         return results
+
     with open(file_path, "r", encoding="utf-8", errors="replace") as file:
         soup = BeautifulSoup(file, "html.parser")
+
     base_path = os.path.dirname(file_path)
     missing_assets = []
     css_files = [tag["href"] for tag in soup.find_all("link", {"rel": "stylesheet"}) if "href" in tag.attrs]
+
     banner_width, banner_height = None, None
     border_found = False
+
     for css_file in css_files:
         css_file_path = os.path.join(base_path, css_file)
         if not os.path.exists(css_file_path):
             continue
         with open(css_file_path, "r", encoding="utf-8", errors="replace") as f:
             css_content = f.read()
-        if "default.css" in css_file_path:
-            banner_width, banner_height = extract_ad_size_from_css(css_file_path)
+        if not banner_width or not banner_height:
+            w, h = extract_ad_size_from_css(css_file_path)
+            if w and h:
+                banner_width, banner_height = w, h
         if check_border_in_css(css_content):
             border_found = True
 
+    # fallback to inline style detection
     if not banner_width or not banner_height:
         size_div = soup.find(attrs={"class": "adSize"})
         if size_div and "style" in size_div.attrs:
@@ -105,9 +112,12 @@ def validate_html(file_path):
             asset_path = os.path.abspath(os.path.join(base_path, src.lstrip("/")))
             if not os.path.exists(asset_path):
                 missing_assets.append(src)
+
     if missing_assets:
         results["errors"].append(f"Missing assets: {missing_assets}")
+
     return results
+
 
 def validate_js(file_path):
     results = {"warnings": [], "errors": []}
