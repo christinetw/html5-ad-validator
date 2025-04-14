@@ -1,7 +1,6 @@
 import os
 import re
 import zipfile
-import chardet
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from bs4 import BeautifulSoup
@@ -11,10 +10,10 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"html", "zip"}
 EXPECTED_BANNER_SIZES = [(300, 250), (160, 600), (728, 90), (320, 50), (970, 250), (300, 50)]
-MAX_FILE_SIZE_KB = 150  # Max allowed HTML5 ad size
-ANIMATION_MAX_DURATION = 15  # Max animation duration in seconds
-MAX_LOOP_COUNT = 3  # Max allowed loop count
-ANIMATION_WARNING_THRESHOLD = 14.8  # Threshold to show warning instead of error
+MAX_FILE_SIZE_KB = 150
+ANIMATION_MAX_DURATION = 15
+MAX_LOOP_COUNT = 3
+ANIMATION_WARNING_THRESHOLD = 14.8
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -38,22 +37,20 @@ def extract_ad_size_from_css(css_file_path):
         with open(css_file_path, "r", encoding="utf-8", errors="replace") as file:
             css_content = file.read()
 
-        # Loosened to find width/height anywhere
         width_match = re.search(r"width\s*:\s*(\d+)px", css_content)
         height_match = re.search(r"height\s*:\s*(\d+)px", css_content)
 
         if width_match and height_match:
             return int(width_match.group(1)), int(height_match.group(1))
     except Exception as e:
-        print(f"❌ Error reading CSS file: {e}")
+        print(f"[ERROR] Error reading CSS file: {e}")
     return None, None
-
 
 def check_border_in_css(css_content):
     return bool(re.search(r"border\s*:\s*1px\s+solid", css_content, re.IGNORECASE))
 
 def validate_html(file_path):
-    results = {"warnings": [], "errors": [], "banner_size": None, "border": "❌ Missing 1px border"}
+    results = {"warnings": [], "errors": [], "banner_size": None, "border": "\u274c Missing 1px border"}
     if not os.path.exists(file_path):
         results["errors"].append(f"File {file_path} does not exist.")
         return results
@@ -63,7 +60,7 @@ def validate_html(file_path):
 
     base_path = os.path.dirname(file_path)
     missing_assets = []
-    border_found = False  # 🔧 Make sure this is initialized
+    border_found = False
 
     css_files = [tag["href"] for tag in soup.find_all("link", {"rel": "stylesheet"}) if "href" in tag.attrs]
 
@@ -83,7 +80,6 @@ def validate_html(file_path):
         if check_border_in_css(css_content):
             border_found = True
 
-    # Fallback: Check inline style
     size_div = soup.find(attrs={"class": "adSize"})
     if size_div and "style" in size_div.attrs:
         style = size_div["style"]
@@ -93,20 +89,16 @@ def validate_html(file_path):
             html_width = int(width_match.group(1))
             html_height = int(height_match.group(1))
 
-    # Determine final banner size source
     banner_width = css_width or html_width
     banner_height = css_height or html_height
 
-    # Check for mismatch
     if css_width and html_width and (css_width != html_width or css_height != html_height):
         results["warnings"].append(
-            f"⚠️ Size mismatch: CSS says {css_width}x{css_height}, HTML inline style says {html_width}x{html_height}"
+            f"\u26a0\ufe0f Size mismatch: CSS says {css_width}x{css_height}, HTML inline style says {html_width}x{html_height}"
         )
-        print("✅ Size Mismatch Warning Added:", results["warnings"])
-
 
     if border_found:
-        results["border"] = "✅ 1px border present"
+        results["border"] = "\u2705 1px border present"
     if banner_width and banner_height:
         results["banner_size"] = f"{banner_width}x{banner_height}"
         if (banner_width, banner_height) not in EXPECTED_BANNER_SIZES:
@@ -114,14 +106,14 @@ def validate_html(file_path):
                 f"Invalid banner size: {banner_width}x{banner_height}. Expected sizes: {EXPECTED_BANNER_SIZES}"
             )
     else:
-        results["warnings"].append("⚠️ Could not determine banner size from CSS or HTML inline styles.")
+        results["warnings"].append("\u26a0\ufe0f Could not determine banner size from CSS or HTML inline styles.")
 
     for tag in soup.find_all(["img", "script", "link"]):
         src = tag.get("src") or tag.get("href")
         if tag.name in ["script", "style"] and not src:
             continue
         if not src:
-            results["warnings"].append(f"⚠️ Missing `src` or `href` attribute in <{tag.name}> tag.")
+            results["warnings"].append(f"\u26a0\ufe0f Missing `src` or `href` attribute in <{tag.name}> tag.")
             continue
         if src.startswith("data:"):
             continue
@@ -135,9 +127,8 @@ def validate_html(file_path):
 
     return results
 
-
 def validate_js(file_path):
-    results = {"warnings": [], "errors": []}
+    results = {"warnings": [], "errors": [], "duration": 0, "isi_duration": 0}
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as file:
             js_code = file.read()
@@ -147,34 +138,32 @@ def validate_js(file_path):
 
     js_code = re.sub(r'//.*', '', js_code)
 
-    # Start with 0 and add durations from delayedCall
-    total_estimated_duration = 0.0
-    delayed_calls = re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)
-    for delay in delayed_calls:
-        try:
-            total_estimated_duration += float(delay)
-        except:
-            continue
+    frame_delays = sum([float(d) for d in re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)])
+    delay_calls = sum([float(d) for d in re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)])
+    durations = sum([float(d) for d in re.findall(r"duration\s*:\s*(\d+\.?\d*)", js_code)])
 
-    # Check for ISI Scroll usage
+    animation_duration = frame_delays + delay_calls + durations
+
+    isi_scroll = 0.0
     isi_scroll_found = bool(re.search(r"scrollTo\s*:\s*\{[^}]*y\s*:", js_code)) or "ISIscroll" in js_code
-    scroll_speed = 0
-
     if isi_scroll_found:
-        scroll_speed_match = re.search(r"scrollSpeed\s*=\s*(\d+(\.\d+)?)", js_code)
-        if scroll_speed_match:
-            scroll_speed = float(scroll_speed_match.group(1))
+        match = re.search(r"scrollSpeed\s*=\s*(\d+(\.\d+)?)", js_code)
+        if match:
+            isi_scroll = float(match.group(1))
         elif "scrollSpeed" in js_code and "creative.isi_height" in js_code:
-            scroll_speed = 10  # Default fallback
-        total_estimated_duration += scroll_speed
+            isi_scroll = 10.0
 
-    if total_estimated_duration > ANIMATION_MAX_DURATION:
+    total_duration = animation_duration + isi_scroll
+    results["duration"] = round(animation_duration, 1)
+    results["isi_duration"] = round(isi_scroll, 1)
+
+    if total_duration > ANIMATION_MAX_DURATION:
         results["errors"].append(
-            f"Estimated total animation duration exceeds {ANIMATION_MAX_DURATION}s: {total_estimated_duration:.1f}s"
+            f"Estimated total animation duration exceeds {ANIMATION_MAX_DURATION}s: {total_duration:.1f}s"
         )
-    elif total_estimated_duration >= ANIMATION_WARNING_THRESHOLD:
+    elif total_duration >= ANIMATION_WARNING_THRESHOLD:
         results["warnings"].append(
-            f"Estimated total animation duration approaching limit: {total_estimated_duration:.1f}s"
+            f"Estimated total animation duration approaching limit: {total_duration:.1f}s"
         )
 
     loops = re.findall(r"repeat\s*:\s*(\d+|Infinity|-1)", js_code)
@@ -187,15 +176,19 @@ def validate_js(file_path):
 
     return results
 
+
+
+
+
 @app.route("/preview/<path:folder>/<filename>")
 def preview_banner(folder, filename):
     if "__MACOSX" in folder or filename.startswith("."):
         return "Invalid preview request", 404
     folder_path = os.path.join(UPLOAD_FOLDER, folder)
     full_path = os.path.join(folder_path, filename)
-    print(f"🔍 Requested preview: {full_path}")
+    print(f"[INFO] Requested preview: {full_path}")
     if not os.path.exists(full_path):
-        print("❌ File not found:", full_path)
+        print("[ERROR] File not found:", full_path)
         return "File not found", 404
     return send_from_directory(folder_path, filename)
 
@@ -205,7 +198,7 @@ def index():
 
 @app.route("/validate", methods=["POST"])
 def validate_file():
-    print("🔍 Received a file upload request...")
+    print("[INFO] Received a file upload request...")
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     file = request.files["file"]
@@ -218,17 +211,16 @@ def validate_file():
     file.save(file_path)
 
     file_size_kb = os.path.getsize(file_path) / 1024
-    print(f"📦 Uploaded file size: {file_size_kb:.2f} KB")
+    print(f"[INFO] Uploaded file size: {file_size_kb:.2f} KB")
 
     preview_links = []
     validation_results = {"html": {}, "js": {}}
+    durations = {"animation": 0.0, "isi": 0.0, "total": 0.0}
 
     if filename.endswith(".zip"):
         extracted_folder = extract_zip(file_path)
         if not extracted_folder:
             return jsonify({"error": "Invalid ZIP file."}), 400
-        print("Extracted Folder:", extracted_folder)
-        print("Extracted Files:", os.listdir(extracted_folder))
         html_files = []
         js_files = []
         for root, _, files in os.walk(extracted_folder):
@@ -241,26 +233,28 @@ def validate_file():
         if not html_files:
             return jsonify({"error": "No HTML file found in ZIP."}), 400
         for html_file in html_files:
-            print(f"📄 Validating HTML file: {html_file}")
             validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
             preview_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
             relative_html_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, preview_folder))
             preview_links.append(f"http://127.0.0.1:5000/preview/{preview_folder}/{relative_html_path}")
         for js_file in js_files:
-            print(f"📜 Validating JS file: {js_file}")
-            validation_results["js"][os.path.basename(js_file)] = validate_js(js_file)
+            js_result = validate_js(js_file)
+            validation_results["js"][os.path.basename(js_file)] = js_result
+            durations["animation"] += js_result["duration"]
+            durations["isi"] += js_result["isi_duration"]
     elif filename.endswith(".html"):
         validation_results["html"][filename] = validate_html(file_path)
         preview_links.append(f"http://127.0.0.1:5000/preview/{filename}")
 
-    import pprint
-    pprint.pprint(validation_results)
- 
+    durations["animation"] = round(durations["animation"], 1)
+    durations["isi"] = round(durations["isi"], 1)
+    durations["total"] = round(durations["animation"] + durations["isi"], 1)
 
     return jsonify({
         "validation_results": validation_results,
         "previews": preview_links,
-        "file_size_kb": round(file_size_kb, 2)
+        "file_size_kb": round(file_size_kb, 2),
+        "durations": durations
     })
 
 if __name__ == "__main__":

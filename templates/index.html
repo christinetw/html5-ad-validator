@@ -27,36 +27,15 @@
       border-radius: 5px;
       display: none;
     }
-    .error {
-      color: red;
-      font-weight: bold;
-    }
-    .warning {
-      color: orange;
-    }
-    .success {
-      color: green;
-    }
-    .info {
-      color: #333;
-      font-weight: bold;
-    }
-    .pass {
-      color: green;
-    }
-    .check {
-      color: blue;
-    }
-    .fail {
-      color: red;
-    }
-    .banner-preview {
-      margin-top: 20px;
-      text-align: center;
-    }
-    .iframe-container {
-      margin-top: 10px;
-    }
+    .error { color: red; font-weight: bold; }
+    .warning { color: orange; }
+    .success { color: green; }
+    .info { color: #333; font-weight: bold; }
+    .pass { color: green; }
+    .check { color: blue; }
+    .fail { color: red; }
+    .banner-preview { margin-top: 20px; text-align: center; }
+    .iframe-container { margin-top: 10px; }
     iframe {
       border: 1px solid #ccc;
       display: block;
@@ -118,9 +97,6 @@
 
         const data = await response.json();
 
-        console.log("🚨 Validation Results:", data.validation_results);
-
-
         resultsDiv.innerHTML = `<p class="info">📦 File Selected: <strong>${uploadedFile.name}</strong> (${fileSizeFormatted})</p>`;
 
         if (data.file_size_kb !== undefined) {
@@ -147,16 +123,6 @@
 
           resultsDiv.innerHTML += `<p class="${Object.keys(htmlResults).length > 0 ? 'pass' : 'fail'}">📄 HTML Validation: ${Object.keys(htmlResults).length > 0 ? "✅ Checked" : "❌ Not found"}</p>`;
 
-         Object.entries(htmlResults).forEach(([fileName, result]) => {
-         if (result.warnings && result.warnings.length > 0) {
-         result.warnings.forEach(warning => {
-         resultsDiv.innerHTML += `<p class="warning">⚠️ ${warning}</p>`;
-         });
-         }
-         });
-
-
-          // ✅ INSERTED BLOCK: Show warnings like size mismatch
           Object.entries(htmlResults).forEach(([fileName, result]) => {
             if (result.warnings && result.warnings.length > 0) {
               result.warnings.forEach(warning => {
@@ -168,22 +134,6 @@
           const jsErrors = [].concat(...Object.values(jsResults).map(r => r.errors || []));
           const jsWarnings = [].concat(...Object.values(jsResults).map(r => r.warnings || []));
 
-          let animIssueText = "✅ Within limit";
-          let animClass = "pass";
-
-          const durationError = jsErrors.find(e => e.toLowerCase().includes("animation duration exceeds"));
-          const durationWarning = jsWarnings.find(w => w.toLowerCase().includes("approaching limit"));
-
-          if (durationError) {
-            animIssueText = `❌ ${durationError}`;
-            animClass = "fail";
-          } else if (durationWarning) {
-            animIssueText = `⚠️ ${durationWarning}`;
-            animClass = "warning";
-          }
-
-          resultsDiv.innerHTML += `<p class="${animClass}">🎞 Animation Duration: ${animIssueText}</p>`;
-
           const loopIssue = jsErrors.find(e => e.includes("loop count exceeds"));
           resultsDiv.innerHTML += `<p class="${loopIssue ? 'fail' : 'pass'}">🔁 Loop Count: ${loopIssue ? `❌ ${loopIssue}` : "✅ Within limit"}</p>`;
 
@@ -192,6 +142,13 @@
             const borderPass = borderStatus.includes("✅");
             resultsDiv.innerHTML += `<p class="${borderPass ? 'pass' : 'fail'}">🟦 Border Check: ${borderStatus}</p>`;
           }
+        }
+
+        // ✅ Show durations if provided
+        if (data.durations) {
+          resultsDiv.innerHTML += `<p class="info">🎯 Animation Duration: ${data.durations.animation}s</p>`;
+          resultsDiv.innerHTML += `<p class="info">📜 ISI Scroll Duration: ${data.durations.isi}s</p>`;
+          resultsDiv.innerHTML += `<p class="info">🧮 Total Estimated Duration: ${data.durations.total}s</p>`;
         }
 
         if (data.previews && data.previews.length > 0) {
@@ -217,7 +174,6 @@
             previewContainer.appendChild(iframeContainer);
           });
         }
-
       } catch (error) {
         console.error("Error:", error);
         resultsDiv.innerHTML = `<p class="error">❌ An error occurred while validating.</p>`;
