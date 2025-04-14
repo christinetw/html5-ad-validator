@@ -20,6 +20,16 @@ This validator checks:
 - ✅ Visual previews of banners
 - ✅ Border Check:1px border 
 
+### Animation Duration Logic
+
+The tool analyzes JavaScript files inside uploaded ZIPs to estimate total animation duration. It calculates:
+
+- All `duration:` values used in GSAP timelines
+- All `delay:` values including staggered animations
+- All `delayedCall()` timings used to trigger frame transitions
+- Additional estimated time for ISI scrolling if `scrollTo` or `ISIscroll` is detected
+
+The total animation time is shown in the validation results and compared against the maximum 15-second threshold.
 ## 🧠 How It Works
 
 1. Upload a ZIP or HTML file.
