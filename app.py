@@ -61,8 +61,8 @@ def validate_html(file_path):
     missing_assets = []
     css_files = [tag["href"] for tag in soup.find_all("link", {"rel": "stylesheet"}) if "href" in tag.attrs]
 
-    banner_width, banner_height = None, None
-    border_found = False
+    css_width, css_height = None, None
+    html_width, html_height = None, None
 
     for css_file in css_files:
         css_file_path = os.path.join(base_path, css_file)
@@ -70,23 +70,32 @@ def validate_html(file_path):
             continue
         with open(css_file_path, "r", encoding="utf-8", errors="replace") as f:
             css_content = f.read()
-        if not banner_width or not banner_height:
+        if not css_width or not css_height:
             w, h = extract_ad_size_from_css(css_file_path)
             if w and h:
-                banner_width, banner_height = w, h
+                css_width, css_height = w, h
         if check_border_in_css(css_content):
             border_found = True
 
-    # fallback to inline style detection
-    if not banner_width or not banner_height:
-        size_div = soup.find(attrs={"class": "adSize"})
-        if size_div and "style" in size_div.attrs:
-            style = size_div["style"]
-            width_match = re.search(r"width\s*:\s*(\d+)px", style)
-            height_match = re.search(r"height\s*:\s*(\d+)px", style)
-            if width_match and height_match:
-                banner_width = int(width_match.group(1))
-                banner_height = int(height_match.group(1))
+    # Fallback: Check inline style
+    size_div = soup.find(attrs={"class": "adSize"})
+    if size_div and "style" in size_div.attrs:
+        style = size_div["style"]
+        width_match = re.search(r"width\s*:\s*(\d+)px", style)
+        height_match = re.search(r"height\s*:\s*(\d+)px", style)
+        if width_match and height_match:
+            html_width = int(width_match.group(1))
+            html_height = int(height_match.group(1))
+
+    # Determine final banner size source
+    banner_width = css_width or html_width
+    banner_height = css_height or html_height
+
+    # Check for mismatch
+    if css_width and html_width and (css_width != html_width or css_height != html_height):
+        results["warnings"].append(
+            f"⚠️ Size mismatch: CSS says {css_width}x{css_height}, HTML inline style says {html_width}x{html_height}"
+        )
 
     if border_found:
         results["border"] = "✅ 1px border present"
