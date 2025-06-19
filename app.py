@@ -237,15 +237,19 @@ def validate_file():
             validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
             preview_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
             relative_html_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, preview_folder))
-            preview_links.append(f"{request.host_url}preview/{preview_folder}/{relative_html_path}")
+            url_base = request.host_url.replace("http://", "https://")
+            preview_links.append(f"{url_base}preview/{filename}")
+
+ 
         for js_file in js_files:
             js_result = validate_js(js_file)
             validation_results["js"][os.path.basename(js_file)] = js_result
             durations["animation"] += js_result["duration"]
             durations["isi"] += js_result["isi_duration"]
     elif filename.endswith(".html"):
-        validation_results["html"][filename] = validate_html(file_path)
-        preview_links.append(f"http://127.0.0.1:5000/preview/{filename}")
+     validation_results["html"][filename] = validate_html(file_path)
+     url_base = request.host_url.replace("http://", "https://")
+     preview_links.append(f"{url_base}preview/{filename}")
 
     durations["animation"] = round(durations["animation"], 1)
     durations["isi"] = round(durations["isi"], 1)
