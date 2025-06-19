@@ -234,11 +234,11 @@ def validate_file():
         if not html_files:
             return jsonify({"error": "No HTML file found in ZIP."}), 400
         for html_file in html_files:
-            validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
-            preview_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
-            relative_html_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, preview_folder))
-            url_base = request.host_url.replace("http://", "https://")
-            preview_links.append(f"{url_base}preview/{filename}")
+         validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
+         preview_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
+         relative_html_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, preview_folder))
+         url_base = request.host_url.replace("http://", "https://")
+         preview_links.append(f"{url_base}preview/{preview_folder}/{relative_html_path}")
 
  
         for js_file in js_files:
