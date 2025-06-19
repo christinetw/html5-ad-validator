@@ -4,6 +4,7 @@ import zipfile
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from bs4 import BeautifulSoup
+from flask import request
 
 # Flask Configuration
 app = Flask(__name__)
@@ -236,7 +237,7 @@ def validate_file():
             validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
             preview_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
             relative_html_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, preview_folder))
-            preview_links.append(f"http://127.0.0.1:5000/preview/{preview_folder}/{relative_html_path}")
+            preview_links.append(f"{request.host_url}preview/{preview_folder}/{relative_html_path}")
         for js_file in js_files:
             js_result = validate_js(js_file)
             validation_results["js"][os.path.basename(js_file)] = js_result
