@@ -256,9 +256,9 @@ def validate_file():
         "file_size_kb": round(file_size_kb, 2),
         "durations": durations
     })
-@app.route("/")
-def home():
-    return "Hello from HTML5 Ad Validator!"
+#@app.route("/")
+#def home():
+    #return "Hello from HTML5 Ad Validator!"
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
