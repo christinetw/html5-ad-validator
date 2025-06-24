@@ -126,12 +126,21 @@ def validate_html(file_path):
     if missing_assets:
         results["errors"].append(f"Missing assets: {missing_assets}")
 
-    # ✅ Clickable area check
-    clickable_div = soup.find(id="clickTagMain")
+    # Multi-ID clickable area detection
+    clickable_div = (
+        soup.find(id="clickTagMain")
+        or soup.find(id="clickLayer")
+        or soup.find(attrs={"class": "clickTag"})
+        or soup.find(attrs={"class": "clickable"})
+    )
+    
     if not clickable_div:
-        results["warnings"].append("⚠️ No clickable area detected (missing element with id='clickTagMain').")
+        results["warnings"].append(
+            "⚠️ No clickable area detected (missing 'clickTagMain', 'clickLayer', '.clickTag', or '.clickable')."
+        )
 
     return results
+
 
 
 def validate_js(file_path):
@@ -146,12 +155,22 @@ def validate_js(file_path):
     # Remove single-line comments to avoid false positives
     js_code = re.sub(r'//.*', '', js_code)
 
-    frame_delays = sum([float(d) for d in re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)])
-    delay_calls = sum([float(d) for d in re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)])
-    durations = sum([float(d) for d in re.findall(r"duration\s*:\s*(\d+\.?\d*)", js_code)])
+    # Detect frame delays via delayedCall()
+    delayed_calls = [float(d) for d in re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)]
+    total_delay_time = sum(delayed_calls)
 
-    animation_duration = frame_delays + delay_calls + durations
+    # If specific frameDelay variables are used, capture them
+    frame_delay_matches = re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)
+    frame_delays = [float(d) for d in frame_delay_matches]
 
+    # For your structure, delayedCall is used per frame, so sum those
+    animation_duration = sum(delayed_calls)
+
+    # Fallback if no delayedCall captured but frameDelay variable set
+    if animation_duration == 0 and frame_delays:
+        animation_duration = sum(frame_delays)
+
+    # Estimate ISI Scroll (as per your logic)
     isi_scroll = 0.0
     isi_scroll_found = bool(re.search(r"scrollTo\s*:\s*\{[^}]*y\s*:", js_code)) or "ISIscroll" in js_code
     if isi_scroll_found:
@@ -194,6 +213,10 @@ def validate_js(file_path):
             results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit', 'clickTag', or 'Enabler.exit').")
 
     return results
+
+
+
+  
 
 
     
