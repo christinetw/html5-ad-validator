@@ -126,7 +126,13 @@ def validate_html(file_path):
     if missing_assets:
         results["errors"].append(f"Missing assets: {missing_assets}")
 
+    # ✅ Clickable area check
+    clickable_div = soup.find(id="clickTagMain")
+    if not clickable_div:
+        results["warnings"].append("⚠️ No clickable area detected (missing element with id='clickTagMain').")
+
     return results
+
 
 def validate_js(file_path):
     results = {"warnings": [], "errors": [], "duration": 0, "isi_duration": 0}
@@ -137,6 +143,7 @@ def validate_js(file_path):
         results["errors"].append(f"Error reading JavaScript file {file_path}: {str(e)}")
         return results
 
+    # Remove single-line comments to avoid false positives
     js_code = re.sub(r'//.*', '', js_code)
 
     frame_delays = sum([float(d) for d in re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)])
@@ -167,20 +174,27 @@ def validate_js(file_path):
             f"Estimated total animation duration approaching limit: {total_duration:.1f}s"
         )
 
+    # Loop Count Check
     loops = re.findall(r"repeat\s*:\s*(\d+|Infinity|-1)", js_code)
     for loop in loops:
         if loop in ("Infinity", "-1") or (loop.isdigit() and int(loop) > MAX_LOOP_COUNT):
             results["errors"].append(f"Animation loop count exceeds {MAX_LOOP_COUNT}: {loop}")
 
-    if "mainExit" not in js_code and "clickTag" not in js_code:
-        results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit' or 'clickTag').")
+    # Improved ClickTag Detection
+    clicktag_declared = bool(re.search(r"\bvar\s+clickTag\b", js_code))
+    clicktag_with_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", js_code))
+    enabler_exit_used = "Enabler.exit" in js_code
+    mainexit_used = "mainExit" in js_code
+
+    if not (clicktag_with_url or enabler_exit_used or mainexit_used):
+        if clicktag_declared:
+            results["warnings"].append("⚠️ clickTag is declared but no URL is assigned.")
+        else:
+            results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit', 'clickTag', or 'Enabler.exit').")
 
     return results
 
-
-
-
-
+    
 @app.route("/preview/<path:folder>/<filename>")
 def preview_banner(folder, filename):
     if "__MACOSX" in folder or filename.startswith("."):
