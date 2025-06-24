@@ -180,19 +180,21 @@ def validate_js(file_path):
         if loop in ("Infinity", "-1") or (loop.isdigit() and int(loop) > MAX_LOOP_COUNT):
             results["errors"].append(f"Animation loop count exceeds {MAX_LOOP_COUNT}: {loop}")
 
-    # Improved ClickTag Detection
+    # Improved ClickTag Detection with Clear Separation
     clicktag_declared = bool(re.search(r"\bvar\s+clickTag\b", js_code))
     clicktag_with_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", js_code))
     enabler_exit_used = "Enabler.exit" in js_code
     mainexit_used = "mainExit" in js_code
 
-    if not (clicktag_with_url or enabler_exit_used or mainexit_used):
-        if clicktag_declared:
+    if clicktag_declared:
+        if not (clicktag_with_url or enabler_exit_used or mainexit_used):
             results["warnings"].append("⚠️ clickTag is declared but no URL is assigned.")
-        else:
+    else:
+        if not (enabler_exit_used or mainexit_used):
             results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit', 'clickTag', or 'Enabler.exit').")
 
     return results
+
 
     
 @app.route("/preview/<path:folder>/<filename>")
