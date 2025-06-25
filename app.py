@@ -133,11 +133,20 @@ def validate_html(file_path):
         or soup.find(attrs={"class": "clickTag"})
         or soup.find(attrs={"class": "clickable"})
     )
-    
+
     if not clickable_div:
         results["warnings"].append(
             "⚠️ No clickable area detected (missing 'clickTagMain', 'clickLayer', '.clickTag', or '.clickable')."
         )
+
+    # Inline <script> clickTag validation
+    for script_tag in soup.find_all("script"):
+        if script_tag.string:
+            script_content = script_tag.string
+            if "var clickTag" in script_content:
+                has_clicktag_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", script_content))
+                if not has_clicktag_url:
+                    results["warnings"].append("⚠️ clickTag declared in HTML but no URL assigned.")
 
     return results
 
@@ -152,25 +161,18 @@ def validate_js(file_path):
         results["errors"].append(f"Error reading JavaScript file {file_path}: {str(e)}")
         return results
 
-    # Remove single-line comments to avoid false positives
+
     js_code = re.sub(r'//.*', '', js_code)
 
     # Detect frame delays via delayedCall()
     delayed_calls = [float(d) for d in re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)]
-    total_delay_time = sum(delayed_calls)
-
-    # If specific frameDelay variables are used, capture them
     frame_delay_matches = re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)
     frame_delays = [float(d) for d in frame_delay_matches]
 
-    # For your structure, delayedCall is used per frame, so sum those
     animation_duration = sum(delayed_calls)
-
-    # Fallback if no delayedCall captured but frameDelay variable set
     if animation_duration == 0 and frame_delays:
         animation_duration = sum(frame_delays)
 
-    # Estimate ISI Scroll (as per your logic)
     isi_scroll = 0.0
     isi_scroll_found = bool(re.search(r"scrollTo\s*:\s*\{[^}]*y\s*:", js_code)) or "ISIscroll" in js_code
     if isi_scroll_found:
@@ -199,7 +201,7 @@ def validate_js(file_path):
         if loop in ("Infinity", "-1") or (loop.isdigit() and int(loop) > MAX_LOOP_COUNT):
             results["errors"].append(f"Animation loop count exceeds {MAX_LOOP_COUNT}: {loop}")
 
-    # Improved ClickTag Detection with Clear Separation
+    # ClickTag & Exit Detection
     clicktag_declared = bool(re.search(r"\bvar\s+clickTag\b", js_code))
     clicktag_with_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", js_code))
     enabler_exit_used = "Enabler.exit" in js_code
@@ -207,7 +209,7 @@ def validate_js(file_path):
 
     if clicktag_declared:
         if not (clicktag_with_url or enabler_exit_used or mainexit_used):
-            results["warnings"].append("⚠️ clickTag is declared but no URL is assigned.")
+            results["warnings"].append("⚠️ clickTag is declared but no URL assigned.")
     else:
         if not (enabler_exit_used or mainexit_used):
             results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit', 'clickTag', or 'Enabler.exit').")
@@ -216,7 +218,7 @@ def validate_js(file_path):
 
 
 
-  
+
 
 
     
