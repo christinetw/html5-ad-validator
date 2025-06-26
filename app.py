@@ -127,17 +127,20 @@ def validate_html(file_path):
         results["errors"].append(f"Missing assets: {missing_assets}")
 
     # Multi-ID clickable area detection
-    clickable_div = (
-        soup.find(id="clickTagMain")
-        or soup.find(id="clickLayer")
-        or soup.find(attrs={"class": "clickTag"})
-        or soup.find(attrs={"class": "clickable"})
+    # Multi-ID and Class clickable area detection
+clickable_div = (
+    soup.find(id="clickTagMain")
+    or soup.find(id="clickLayer")
+    or soup.find(id="clickable")
+    or soup.find(attrs={"class": "clickTag"})
+    or soup.find(attrs={"class": "clickable"})
+)
+
+if not clickable_div:
+    results["warnings"].append(
+        "⚠️ No clickable area detected (missing 'clickTagMain', 'clickLayer', 'clickable' (id), '.clickTag', or '.clickable')."
     )
 
-    if not clickable_div:
-        results["warnings"].append(
-            "⚠️ No clickable area detected (missing 'clickTagMain', 'clickLayer', '.clickTag', or '.clickable')."
-        )
 
     # Inline <script> clickTag validation
     for script_tag in soup.find_all("script"):
