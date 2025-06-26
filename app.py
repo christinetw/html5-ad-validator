@@ -4,7 +4,6 @@ import zipfile
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 from bs4 import BeautifulSoup
-from flask import request
 
 # Flask Configuration
 app = Flask(__name__)
@@ -37,10 +36,8 @@ def extract_ad_size_from_css(css_file_path):
     try:
         with open(css_file_path, "r", encoding="utf-8", errors="replace") as file:
             css_content = file.read()
-
         width_match = re.search(r"width\s*:\s*(\d+)px", css_content)
         height_match = re.search(r"height\s*:\s*(\d+)px", css_content)
-
         if width_match and height_match:
             return int(width_match.group(1)), int(height_match.group(1))
     except Exception as e:
@@ -126,34 +123,28 @@ def validate_html(file_path):
     if missing_assets:
         results["errors"].append(f"Missing assets: {missing_assets}")
 
-    # Multi-ID clickable area detection
-    # Multi-ID and Class clickable area detection
-clickable_div = (
-    soup.find(id="clickTagMain")
-    or soup.find(id="clickLayer")
-    or soup.find(id="clickable")
-    or soup.find(attrs={"class": "clickTag"})
-    or soup.find(attrs={"class": "clickable"})
-)
-
-if not clickable_div:
-    results["warnings"].append(
-        "⚠️ No clickable area detected (missing 'clickTagMain', 'clickLayer', 'clickable' (id), '.clickTag', or '.clickable')."
+    clickable_div = (
+        soup.find(id="clickTagMain")
+        or soup.find(id="clickLayer")
+        or soup.find(id="clickable")
+        or soup.find(attrs={"class": "clickTag"})
+        or soup.find(attrs={"class": "clickable"})
     )
 
+    if not clickable_div:
+        results["warnings"].append(
+            "\u26a0\ufe0f No clickable area detected (missing 'clickTagMain', 'clickLayer', 'clickable' (id), '.clickTag', or '.clickable')."
+        )
 
-    # Inline <script> clickTag validation
     for script_tag in soup.find_all("script"):
         if script_tag.string:
             script_content = script_tag.string
             if "var clickTag" in script_content:
                 has_clicktag_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", script_content))
                 if not has_clicktag_url:
-                    results["warnings"].append("⚠️ clickTag declared in HTML but no URL assigned.")
+                    results["warnings"].append("\u26a0\ufe0f clickTag declared in HTML but no URL assigned.")
 
     return results
-
-
 
 def validate_js(file_path):
     results = {"warnings": [], "errors": [], "duration": 0, "isi_duration": 0}
@@ -164,26 +155,17 @@ def validate_js(file_path):
         results["errors"].append(f"Error reading JavaScript file {file_path}: {str(e)}")
         return results
 
+    js_code = re.sub(r"//.*", "", js_code)
 
-    js_code = re.sub(r'//.*', '', js_code)
-
-    # Detect frame delays via delayedCall()
     delayed_calls = [float(d) for d in re.findall(r"delayedCall\s*\(\s*(\d+\.?\d*)", js_code)]
-    frame_delay_matches = re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)
-    frame_delays = [float(d) for d in frame_delay_matches]
-
-    animation_duration = sum(delayed_calls)
-    if animation_duration == 0 and frame_delays:
-        animation_duration = sum(frame_delays)
+    frame_delays = [float(d) for d in re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js_code)]
+    animation_duration = sum(delayed_calls) or sum(frame_delays)
 
     isi_scroll = 0.0
     isi_scroll_found = bool(re.search(r"scrollTo\s*:\s*\{[^}]*y\s*:", js_code)) or "ISIscroll" in js_code
     if isi_scroll_found:
         match = re.search(r"scrollSpeed\s*=\s*(\d+(\.\d+)?)", js_code)
-        if match:
-            isi_scroll = float(match.group(1))
-        elif "scrollSpeed" in js_code and "creative.isi_height" in js_code:
-            isi_scroll = 10.0
+        isi_scroll = float(match.group(1)) if match else 10.0
 
     total_duration = animation_duration + isi_scroll
     results["duration"] = round(animation_duration, 1)
@@ -198,13 +180,11 @@ def validate_js(file_path):
             f"Estimated total animation duration approaching limit: {total_duration:.1f}s"
         )
 
-    # Loop Count Check
     loops = re.findall(r"repeat\s*:\s*(\d+|Infinity|-1)", js_code)
     for loop in loops:
         if loop in ("Infinity", "-1") or (loop.isdigit() and int(loop) > MAX_LOOP_COUNT):
             results["errors"].append(f"Animation loop count exceeds {MAX_LOOP_COUNT}: {loop}")
 
-    # ClickTag & Exit Detection
     clicktag_declared = bool(re.search(r"\bvar\s+clickTag\b", js_code))
     clicktag_with_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", js_code))
     enabler_exit_used = "Enabler.exit" in js_code
@@ -212,28 +192,20 @@ def validate_js(file_path):
 
     if clicktag_declared:
         if not (clicktag_with_url or enabler_exit_used or mainexit_used):
-            results["warnings"].append("⚠️ clickTag is declared but no URL assigned.")
+            results["warnings"].append("\u26a0\ufe0f clickTag is declared but no URL assigned.")
     else:
         if not (enabler_exit_used or mainexit_used):
-            results["warnings"].append("⚠️ No click tracking detected (missing 'mainExit', 'clickTag', or 'Enabler.exit').")
+            results["warnings"].append("\u26a0\ufe0f No click tracking detected (missing 'mainExit', 'clickTag', or 'Enabler.exit').")
 
     return results
 
-
-
-
-
-
-    
 @app.route("/preview/<path:folder>/<filename>")
 def preview_banner(folder, filename):
     if "__MACOSX" in folder or filename.startswith("."):
         return "Invalid preview request", 404
     folder_path = os.path.join(UPLOAD_FOLDER, folder)
     full_path = os.path.join(folder_path, filename)
-    print(f"[INFO] Requested preview: {full_path}")
     if not os.path.exists(full_path):
-        print("[ERROR] File not found:", full_path)
         return "File not found", 404
     return send_from_directory(folder_path, filename)
 
@@ -243,7 +215,6 @@ def index():
 
 @app.route("/validate", methods=["POST"])
 def validate_file():
-    print("[INFO] Received a file upload request...")
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     file = request.files["file"]
@@ -251,13 +222,12 @@ def validate_file():
         return jsonify({"error": "No file selected"}), 400
     if not allowed_file(file.filename):
         return jsonify({"error": "Invalid file type"}), 400
+
     filename = secure_filename(file.filename)
     file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(file_path)
 
     file_size_kb = os.path.getsize(file_path) / 1024
-    print(f"[INFO] Uploaded file size: {file_size_kb:.2f} KB")
-
     preview_links = []
     validation_results = {"html": {}, "js": {}}
     durations = {"animation": 0.0, "isi": 0.0, "total": 0.0}
@@ -266,34 +236,34 @@ def validate_file():
         extracted_folder = extract_zip(file_path)
         if not extracted_folder:
             return jsonify({"error": "Invalid ZIP file."}), 400
-        html_files = []
-        js_files = []
+
+        html_files, js_files = [], []
         for root, _, files in os.walk(extracted_folder):
-            for file in files:
-                if file.endswith(".html") and "__MACOSX" not in root:
-                    html_path = os.path.join(root, file)
-                    html_files.append(html_path)
-                elif file.endswith(".js") and "__MACOSX" not in root:
-                    js_files.append(os.path.join(root, file))
+            for f in files:
+                path = os.path.join(root, f)
+                if f.endswith(".html") and "__MACOSX" not in root:
+                    html_files.append(path)
+                elif f.endswith(".js") and "__MACOSX" not in root:
+                    js_files.append(path)
+
         if not html_files:
             return jsonify({"error": "No HTML file found in ZIP."}), 400
-        for html_file in html_files:
-         validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
-         preview_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
-         relative_html_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, preview_folder))
-         url_base = request.host_url.replace("http://", "https://")
-         preview_links.append(f"{url_base}preview/{preview_folder}/{relative_html_path}")
 
- 
+        for html_file in html_files:
+            validation_results["html"][os.path.basename(html_file)] = validate_html(html_file)
+            rel_folder = os.path.relpath(os.path.dirname(html_file), UPLOAD_FOLDER)
+            rel_path = os.path.relpath(html_file, os.path.join(UPLOAD_FOLDER, rel_folder))
+            preview_links.append(f"{request.host_url.replace('http://', 'https://')}preview/{rel_folder}/{rel_path}")
+
         for js_file in js_files:
-            js_result = validate_js(js_file)
-            validation_results["js"][os.path.basename(js_file)] = js_result
-            durations["animation"] += js_result["duration"]
-            durations["isi"] += js_result["isi_duration"]
+            res = validate_js(js_file)
+            validation_results["js"][os.path.basename(js_file)] = res
+            durations["animation"] += res["duration"]
+            durations["isi"] += res["isi_duration"]
+
     elif filename.endswith(".html"):
-     validation_results["html"][filename] = validate_html(file_path)
-     url_base = request.host_url.replace("http://", "https://")
-     preview_links.append(f"{url_base}preview/{filename}")
+        validation_results["html"][filename] = validate_html(file_path)
+        preview_links.append(f"{request.host_url.replace('http://', 'https://')}preview/{filename}")
 
     durations["animation"] = round(durations["animation"], 1)
     durations["isi"] = round(durations["isi"], 1)
@@ -305,9 +275,6 @@ def validate_file():
         "file_size_kb": round(file_size_kb, 2),
         "durations": durations
     })
-#@app.route("/")
-#def home():
-    #return "Hello from HTML5 Ad Validator!"
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=8080)
