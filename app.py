@@ -140,10 +140,10 @@ def validate_html(file_path):
      if script_tag.string:
         script_content = script_tag.string
         clicktag_matches = re.findall(r"var\s+(clickTag\d*)", script_content)
-    for var in clicktag_matches:
-        url_match = re.search(rf"{var}\s*=\s*['\"]https?://", script_content)
-    if not url_match:
-         results["warnings"].append(f"\u26a0\ufe0f {var} declared in HTML but no URL assigned.")
+        for var in clicktag_matches:
+            url_match = re.search(rf"{var}\s*=\s*['\"]https?://", script_content)
+            if not url_match:
+                results["warnings"].append(f"\u26a0\ufe0f {var} declared in HTML but no URL assigned.")
 
 
     return results
