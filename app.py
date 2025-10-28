@@ -137,12 +137,14 @@ def validate_html(file_path):
         )
 
     for script_tag in soup.find_all("script"):
-        if script_tag.string:
-            script_content = script_tag.string
-            if "var clickTag" in script_content:
-                has_clicktag_url = bool(re.search(r"\bclickTag\s*=\s*['\"]https?:\/\/", script_content))
-                if not has_clicktag_url:
-                    results["warnings"].append("\u26a0\ufe0f clickTag declared in HTML but no URL assigned.")
+     if script_tag.string:
+        script_content = script_tag.string
+        clicktag_matches = re.findall(r"var\s+(clickTag\d*)", script_content)
+    for var in clicktag_matches:
+        url_match = re.search(rf"{var}\s*=\s*['\"]https?://", script_content)
+    if not url_match:
+         results["warnings"].append(f"\u26a0\ufe0f {var} declared in HTML but no URL assigned.")
+
 
     return results
 
