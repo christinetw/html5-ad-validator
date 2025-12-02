@@ -4,14 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>HTML5 Ad Validator - Detailed Report</title>
+
+  <!-- PDF Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
       margin: 20px;
+      background: #fafafa;
     }
     .container {
-      width: 50%;
+      width: 90%;
+      max-width: 1100px;
       margin: auto;
     }
     input, button {
@@ -22,46 +29,98 @@
       margin-top: 20px;
       text-align: left;
       white-space: pre-wrap;
-      background: #f4f4f4;
-      padding: 10px;
+      background: #fff;
+      padding: 20px;
       border-radius: 5px;
       display: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     .error { color: red; font-weight: bold; }
     .warning { color: orange; }
     .success { color: green; }
-    .info { color: #333; font-weight: bold; }
+    .info { color: #000; font-weight: bold; }
     .pass { color: green; }
     .check { color: blue; }
     .fail { color: red; }
-    .banner-preview {
-      margin-bottom: 20px;
+
+    /* Preview Grid */
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 30px;
+      margin-top: 20px;
+    }
+
+    /* Each banner card */
+    .preview-card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       text-align: center;
     }
-    .iframe-container {
-      margin-top: 10px;
+
+    /* Banner frame */
+    .preview-frame {
+      background: #e0e0e0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 200px;
     }
-    iframe {
-      border: 1px solid #ccc;
-      display: block;
-      margin: 10px auto;
+
+    /* Thumbnail toggle */
+    .thumbnail {
+      transform: scale(0.5);
+      transform-origin: top center;
+    }
+
+    /* Buttons */
+    .open-btn {
+      margin-top: 10px;
+      padding: 6px 14px;
+      border: none;
+      background: #0077ff;
+      color: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .open-btn:hover {
+      background: #005fcc;
     }
   </style>
 </head>
+
 <body>
+
   <div class="container">
 
-    <h3>Banner Previews:</h3>
-    <div class="banner-preview" id="previewContainer"></div>
-
     <h2>Upload a ZIP File for HTML Validation</h2>
+
+    <!-- UPLOAD FORM (FIRST) -->
     <form id="uploadForm">
       <input type="file" id="fileInput" accept=".zip,.html" required /><br />
       <button type="submit" id="submitBtn">Upload & Validate</button>
     </form>
 
+    <!-- PREVIEW (SECOND) -->
+    <div class="banner-preview" id="previewContainer"></div>
+
+    <!-- RESULTS (THIRD) -->
     <h3>Validation Results:</h3>
     <div id="results"></div>
+
+    <!-- EXPORT BUTTONS -->
+    <button id="savePdfBtn"
+            style="display:none; margin-top:10px; padding:8px 14px;">
+      💾 Save Results as PDF
+    </button>
+
+    <button id="saveWordBtn"
+            style="display:none; margin-top:10px; padding:8px 14px;">
+      💾 Download Word Report
+    </button>
 
   </div>
 
@@ -72,6 +131,9 @@
       return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     }
 
+    let lastValidationData = null;
+    let lastUploadedFileName = "";
+
     document.getElementById('uploadForm').addEventListener('submit', async function (event) {
       event.preventDefault();
 
@@ -79,6 +141,8 @@
       const submitBtn = document.getElementById("submitBtn");
       const resultsDiv = document.getElementById("results");
       const previewContainer = document.getElementById("previewContainer");
+      const savePdfBtn = document.getElementById("savePdfBtn");
+      const saveWordBtn = document.getElementById("saveWordBtn");
 
       if (fileInput.files.length === 0) {
         alert("Please select a file to upload.");
@@ -86,12 +150,14 @@
       }
 
       const uploadedFile = fileInput.files[0];
-      const fileSizeFormatted = formatFileSize(uploadedFile.size);
+      lastUploadedFileName = uploadedFile.name;
 
       submitBtn.disabled = true;
       resultsDiv.innerHTML = "";
       resultsDiv.style.display = "block";
       previewContainer.innerHTML = "";
+      savePdfBtn.style.display = "none";
+      saveWordBtn.style.display = "none";
 
       const formData = new FormData();
       formData.append("file", uploadedFile);
@@ -103,6 +169,9 @@
         });
 
         const data = await response.json();
+        lastValidationData = data;
+
+        const fileSizeFormatted = formatFileSize(uploadedFile.size);
 
         resultsDiv.innerHTML = `<p class="info">📦 File Selected: <strong>${uploadedFile.name}</strong> (${fileSizeFormatted})</p>`;
 
@@ -117,8 +186,8 @@
         }
 
         if (data.validation_results) {
-          const htmlResults = data.validation_results.html;
-          const jsResults = data.validation_results.js;
+          const htmlResults = data.validation_results.html || {};
+          const jsResults = data.validation_results.js || {};
 
           const hasMissingAssets = Object.values(htmlResults).some(r => r.errors?.some(e => e.includes("Missing assets")));
           resultsDiv.innerHTML += `<p class="${hasMissingAssets ? 'fail' : 'pass'}">📁 Assets Check: ${hasMissingAssets ? "❌ Missing assets" : "✅ All assets present"}</p>`;
@@ -138,10 +207,7 @@
             }
           });
 
-          const jsErrors = [].concat(...Object.values(jsResults).map(r => r.errors || []));
-          const jsWarnings = [].concat(...Object.values(jsResults).map(r => r.warnings || []));
-
-          const loopIssue = jsErrors.find(e => e.includes("loop count exceeds"));
+          const loopIssue = Object.values(jsResults).flatMap(r => r.errors || []).find(e => e.includes("loop count exceeds"));
           resultsDiv.innerHTML += `<p class="${loopIssue ? 'fail' : 'pass'}">🔁 Loop Count: ${loopIssue ? `❌ ${loopIssue}` : "✅ Within limit"}</p>`;
 
           const borderStatus = Object.values(htmlResults)[0]?.border;
@@ -150,12 +216,11 @@
             resultsDiv.innerHTML += `<p class="${borderPass ? 'pass' : 'fail'}">🟦 Border Check: ${borderStatus}</p>`;
           }
 
-          // ✅ New Clickable Area Check
-          const clickAreaWarning = Object.values(htmlResults).flatMap(r => r.warnings || []).find(w => w.includes("clickable area"));
+          const clickAreaWarning = Object.values(htmlResults).flatMap(r => r.warnings || []).find(w => w.includes("No clickable area"));
           if (clickAreaWarning) {
             resultsDiv.innerHTML += `<p class="warning">⚠️ ${clickAreaWarning}</p>`;
           } else {
-            resultsDiv.innerHTML += `<p class="pass">🖱️ Clickable Area Detected</p>`;
+            resultsDiv.innerHTML += `<p class="pass">🖱️ Clickable Area: HTML click layer detected</p>`;
           }
         }
 
@@ -165,29 +230,77 @@
           resultsDiv.innerHTML += `<p class="info">🧮 Total Estimated Duration: ${data.durations.total}s</p>`;
         }
 
+        /** 🔥 ENHANCED PREVIEW UI */
         if (data.previews && data.previews.length > 0) {
           previewContainer.innerHTML = "<h3>Banner Previews:</h3>";
+          const grid = document.createElement("div");
+          grid.className = "preview-grid";
+          previewContainer.appendChild(grid);
+
           data.previews.forEach((previewUrl, index) => {
-            const correspondingHtmlResult = Object.entries(data.validation_results.html || {})[index]?.[1];
+            const resultEntry = Object.entries(data.validation_results.html || {})[index];
+            const correspondingHtmlResult = resultEntry ? resultEntry[1] : null;
             const sizeText = correspondingHtmlResult?.banner_size || "Unknown Size";
+
+            const card = document.createElement("div");
+            card.className = "preview-card";
 
             const label = document.createElement("p");
             label.className = "info";
             label.textContent = `🖼 Banner Size: ${sizeText}`;
-            const iframeContainer = document.createElement("div");
-            iframeContainer.classList.add("iframe-container");
+            card.appendChild(label);
+
+            const frame = document.createElement("div");
+            frame.className = "preview-frame";
 
             const iframe = document.createElement("iframe");
             iframe.src = previewUrl;
-            iframe.width = "100%";
-            iframe.height = "250px";
-            iframe.style.minHeight = "200px";
 
-            iframeContainer.appendChild(label);
-            iframeContainer.appendChild(iframe);
-            previewContainer.appendChild(iframeContainer);
+            let iframeWidth = 300;
+            let iframeHeight = 250;
+
+            if (sizeText.includes("x")) {
+              const parts = sizeText.split("x");
+              iframeWidth = parseInt(parts[0].trim());
+              iframeHeight = parseInt(parts[1].trim());
+            }
+
+            let scale = 1;
+            if (iframeWidth > 600) scale = 0.5;
+            if (iframeWidth > 900) scale = 0.4;
+
+            iframe.width = iframeWidth + "px";
+            iframe.height = iframeHeight + "px";
+            iframe.style.transform = `scale(${scale})`;
+            iframe.style.transformOrigin = "top center";
+            iframe.style.border = "1px solid #ccc";
+
+            frame.appendChild(iframe);
+            card.appendChild(frame);
+
+            const openBtn = document.createElement("button");
+            openBtn.className = "open-btn";
+            openBtn.textContent = "Open in New Tab";
+            openBtn.onclick = () => window.open(previewUrl, "_blank");
+            card.appendChild(openBtn);
+
+            const thumbToggle = document.createElement("button");
+            thumbToggle.className = "open-btn";
+            thumbToggle.style.background = "#666";
+            thumbToggle.textContent = "Toggle Thumbnail";
+            thumbToggle.onclick = () => {
+              iframe.classList.toggle("thumbnail");
+            };
+            card.appendChild(thumbToggle);
+
+            grid.appendChild(card);
           });
         }
+
+        // show export buttons
+        savePdfBtn.style.display = "inline-block";
+        saveWordBtn.style.display = "inline-block";
+
       } catch (error) {
         console.error("Error:", error);
         resultsDiv.innerHTML = `<p class="error">❌ An error occurred while validating.</p>`;
@@ -195,6 +308,90 @@
         submitBtn.disabled = false;
       }
     });
+
+    /** 🔥 PDF EXPORT */
+    document.getElementById("savePdfBtn").addEventListener("click", async () => {
+      const { jsPDF } = window.jspdf;
+
+      const resultsDiv = document.getElementById("results");
+      const previewGrid = document.getElementById("previewContainer");
+
+      const combined = document.createElement("div");
+      combined.style.padding = "20px";
+      combined.style.background = "#fff";
+
+      combined.appendChild(resultsDiv.cloneNode(true));
+      combined.appendChild(document.createElement("hr"));
+      combined.appendChild(previewGrid.cloneNode(true));
+
+      const canvas = await html2canvas(combined, { scale: 2 });
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgData = canvas.toDataURL("image/png");
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        pdf.addPage();
+        position = heightLeft - imgHeight;
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save("ad_validation_report.pdf");
+    });
+
+    /** 📝 WORD EXPORT */
+    document.getElementById("saveWordBtn").addEventListener("click", async () => {
+      if (!lastValidationData) {
+        alert("Please validate a file first.");
+        return;
+      }
+
+      try {
+        const response = await fetch("/word-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            file_name: lastUploadedFileName,
+            file_size_kb: lastValidationData.file_size_kb,
+            validation_results: lastValidationData.validation_results,
+            durations: lastValidationData.durations
+          })
+        });
+
+        if (!response.ok) {
+          alert("Error generating Word report.");
+          return;
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const baseName = lastUploadedFileName
+          ? lastUploadedFileName.replace(/\.[^/.]+$/, "")
+          : "ad_validation_report";
+        a.download = baseName + ".docx";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error(err);
+        alert("Error generating Word report.");
+      }
+    });
   </script>
+
 </body>
 </html>
