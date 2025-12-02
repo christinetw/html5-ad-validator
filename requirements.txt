@@ -1,2 +1,5 @@
 Flask
 beautifulsoup4
+python-docx
+lxml
+gunicorn

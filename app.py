@@ -5,24 +5,21 @@ import shutil
 import zipfile
 import io
 
-from flask import (
-    Flask,
-    request,
-    jsonify,
-    render_template,
-    send_from_directory,
-    send_file,
-)
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 from bs4 import BeautifulSoup
-from docx import Document  # pip install python-docx
+from docx import Document
 
-# -------------------------------------------------------
-# Flask Setup
-# -------------------------------------------------------
-app = Flask(__name__)
-UPLOAD_FOLDER = "uploads"
+# Fly.io writable directory
+UPLOAD_FOLDER = "/data/uploads"
+
+# Ensure upload directory exists (Fly mounts /data as persistent storage)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 ALLOWED_EXTENSIONS = {"html", "zip"}
+
+app = Flask(__name__)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 EXPECTED_BANNER_SIZES = [
     (300, 250), (160, 600), (728, 90), (320, 50),
@@ -590,4 +587,5 @@ def word_report():
 # Run Server
 # -------------------------------------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
