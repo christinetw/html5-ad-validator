@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV "/Users/chrlo2/Library/CloudStorage/OneDrive-PublicisGroupe/html5-ad-validator/venv"
+set -gx VIRTUAL_ENV "/Users/chiao/html5-ad-validator/venv"
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/bin" $PATH

@@ -1,31 +1,41 @@
 app = "html5-ad-validator"
 
-primary_region = "iad"
+# IMPORTANT: Must match your volume region (yyz)
+primary_region = "yyz"
 
 [build]
-dockerfile = "Dockerfile"
+  dockerfile = "Dockerfile"
 
 [env]
-PORT = "8080"
+  PORT = "8080"
 
+# Persistent volume mount for uploaded files
 [[mounts]]
-source = "uploads_data"
-destination = "/data"
+  source = "uploads_data"
+  destination = "/data"
 
 [[services]]
-internal_port = 8080
-protocol = "tcp"
+  internal_port = 8080
+  protocol = "tcp"
 
+  # HTTP traffic
   [[services.ports]]
-  port = 80
-  handlers = ["http"]
+    port = 80
+    handlers = ["http"]
 
+  # HTTPS traffic
   [[services.ports]]
-  port = 443
-  handlers = ["tls", "http"]
+    port = 443
+    handlers = ["tls", "http"]
+
+  # Health check (Fly recommends this format)
+  [services.concurrency]
+    type = "connections"
+    soft_limit = 50
+    hard_limit = 75
 
   [[services.tcp_checks]]
-    interval = "15s"
-    timeout = "2s"
-    grace_period = "10s"
-    restart_limit = 6
+    interval = "10s"
+    timeout = "3s"
+    grace_period = "15s"
+    restart_limit = 5

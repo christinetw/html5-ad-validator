@@ -1,4 +1,4 @@
-#!/Users/chrlo2/Library/CloudStorage/OneDrive-PublicisGroupe/html5-ad-validator/venv/bin/python3.12
+#!/Users/chiao/html5-ad-validator/venv/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys

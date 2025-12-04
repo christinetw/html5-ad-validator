@@ -1,5 +1,7 @@
-Flask
-beautifulsoup4
-python-docx
-lxml
-gunicorn
+Flask>=3.0.0
+beautifulsoup4>=4.12
+python-docx>=1.0
+lxml>=4.9
+gunicorn>=21.2
+
+

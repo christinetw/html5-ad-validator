@@ -5,15 +5,31 @@ import shutil
 import zipfile
 import io
 
-from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    render_template,
+    send_from_directory,
+    send_file,
+    url_for,
+)
 from werkzeug.utils import secure_filename
 from bs4 import BeautifulSoup
 from docx import Document
 
-# Fly.io writable directory
-UPLOAD_FOLDER = "/data/uploads"
+# -------------------------------------------------------
+# Environment-aware upload folder
+# -------------------------------------------------------
+RUNNING_FLY = os.environ.get("FLY_APP_NAME") is not None
 
-# Ensure upload directory exists (Fly mounts /data as persistent storage)
+if RUNNING_FLY:
+    # On Fly.io: use the mounted volume
+    UPLOAD_FOLDER = "/data/uploads"
+else:
+    # Local dev: ./uploads
+    UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"html", "zip"}
@@ -22,8 +38,13 @@ app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 EXPECTED_BANNER_SIZES = [
-    (300, 250), (160, 600), (728, 90), (320, 50),
-    (970, 250), (300, 50)
+    (300, 250),
+    (160, 600),
+    (728, 90),
+    (320, 50),
+    (970, 250),
+    (300, 50),
+    (300, 600),
 ]
 
 MAX_FILE_SIZE_KB = 150
@@ -31,13 +52,12 @@ ANIMATION_MAX_DURATION = 15
 MAX_LOOP_COUNT = 3
 ANIMATION_WARNING_THRESHOLD = 14.8
 
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # -------------------------------------------------------
 # AUTO CLEANUP OF OLD UPLOADS
 # -------------------------------------------------------
-def cleanup_old_uploads(max_age_hours=6):
+def cleanup_old_uploads(max_age_hours: int = 6) -> None:
+    """Delete files/folders in UPLOAD_FOLDER older than max_age_hours."""
     now = time.time()
     max_age_seconds = max_age_hours * 3600
 
@@ -59,11 +79,12 @@ def cleanup_old_uploads(max_age_hours=6):
 # -------------------------------------------------------
 # Helper Functions
 # -------------------------------------------------------
-def allowed_file(filename):
+def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def extract_zip(file_path):
+def extract_zip(file_path: str) -> str | None:
+    """Extract a ZIP into UPLOAD_FOLDER/<zip_name> and return that folder path."""
     extracted_folder = os.path.join(
         UPLOAD_FOLDER, os.path.splitext(os.path.basename(file_path))[0]
     )
@@ -75,44 +96,139 @@ def extract_zip(file_path):
     return extracted_folder
 
 
-def extract_ad_size_from_css(css_file_path):
-    if not os.path.exists(css_file_path):
-        return None, None
-    try:
-        with open(css_file_path, "r", encoding="utf-8", errors="replace") as file:
-            css_content = file.read()
-
-        w = re.search(r"width\s*:\s*(\d+)px", css_content)
-        h = re.search(r"height\s*:\s*(\d+)px", css_content)
-        if w and h:
-            return int(w.group(1)), int(h.group(1))
-    except:
-        pass
-
-    return None, None
-
-
-def check_border_in_css(css_content):
+def check_border_in_css(css_content: str) -> bool:
     return bool(re.search(r"border\s*:\s*1px\s+solid", css_content, re.IGNORECASE))
 
 
-def extract_size_from_inline(style):
+def extract_size_from_inline(style: str) -> tuple[int | None, int | None]:
     w = re.search(r"width\s*:\s*(\d+)px", style)
     h = re.search(r"height\s*:\s*(\d+)px", style)
     return (int(w.group(1)), int(h.group(1))) if w and h else (None, None)
 
 
+def infer_size_from_filename(path: str) -> tuple[int | None, int | None]:
+    """
+    Try to infer size from filename like ..._300x250_... or banner_160x600.html
+    """
+    name = os.path.basename(path)
+    match = re.search(r"(\d{2,4})x(\d{2,4})", name)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None, None
+
+
+def extract_size_from_css_text(css_text: str) -> tuple[int | None, int | None]:
+    """
+    Try to extract width/height specifically from rules that look like
+    .adSize, #viewport, #banner, #stage, etc., instead of grabbing
+    random 16px heights from small elements.
+    """
+    # Only look at likely container selectors
+    selector_patterns = [
+        r"\.adSize\b",
+        r"#viewport\b",
+        r"#banner\b",
+        r"#ad\b",
+        r"#stage\b",
+        r"#designContainer\b",
+    ]
+
+    for sel in selector_patterns:
+        # Capture the block for that selector: selector { ... }
+        pattern = rf"{sel}[^\{{]*\{{([^}}]+)\}}"
+        m = re.search(pattern, css_text, re.IGNORECASE | re.DOTALL)
+        if not m:
+            continue
+
+        block = m.group(1)
+        w = re.search(r"width\s*:\s*(\d+)px", block)
+        h = re.search(r"height\s*:\s*(\d+)px", block)
+        if w and h:
+            return int(w.group(1)), int(h.group(1))
+
+    # If nothing found, don't guess from random width/height in the file.
+    return None, None
+
+
+def detect_banner_size(
+    soup: BeautifulSoup, css_paths: list[str], html_file_path: str
+) -> tuple[int | None, int | None, str]:
+    """
+    Heuristic for banner size with safe priority:
+
+    1) META ad.size
+    2) Inline styles on .adSize or known root IDs (viewport, banner, etc.)
+    3) CSS rules for .adSize / #viewport / etc.
+    4) File name like _300x250
+    """
+    width = height = None
+    source = "Unknown"
+
+    # 1) META TAG (highest priority)
+    meta = soup.find("meta", {"name": "ad.size"})
+    if meta and meta.get("content"):
+        match = re.search(r"width=(\d+),\s*height=(\d+)", meta["content"])
+        if match:
+            width = int(match.group(1))
+            height = int(match.group(2))
+            return width, height, "META ad.size"
+
+    # 2) Inline on .adSize or root containers
+    root_ids = {"viewport", "banner", "ad", "stage", "designContainer"}
+
+    candidates = []
+
+    # Any element with class containing "adSize"
+    for tag in soup.find_all(True):
+        classes = tag.get("class") or []
+        if any(c == "adSize" for c in classes):
+            candidates.append(tag)
+
+    # Known root IDs
+    for rid in root_ids:
+        t = soup.find(id=rid)
+        if t and t not in candidates:
+            candidates.append(t)
+
+    for tag in candidates:
+        style = tag.get("style", "")
+        w, h = extract_size_from_inline(style)
+        if w and h:
+            return w, h, "Inline root (.adSize / root id)"
+
+    # 3) CSS rules from linked stylesheets
+    for css_path in css_paths:
+        if not os.path.exists(css_path):
+            continue
+        try:
+            with open(css_path, "r", encoding="utf-8", errors="replace") as f:
+                css_text = f.read()
+        except OSError:
+            continue
+
+        w, h = extract_size_from_css_text(css_text)
+        if w and h:
+            return w, h, f"CSS ({os.path.basename(css_path)})"
+
+    # 4) Filename fallback
+    w, h = infer_size_from_filename(html_file_path)
+    if w and h:
+        return w, h, "Filename pattern"
+
+    return None, None, source
+
+
 # -------------------------------------------------------
-#  HTML VALIDATION (UPGRADED)
+#  HTML VALIDATION
 # -------------------------------------------------------
-def validate_html(file_path):
+def validate_html(file_path: str) -> dict:
     results = {
         "warnings": [],
         "errors": [],
         "banner_size": None,
         "border": "❌ Missing 1px border",
         "used_meta_tag": False,
-        "size_source": "Unknown"
+        "size_source": "Unknown",
     }
 
     if not os.path.exists(file_path):
@@ -123,113 +239,88 @@ def validate_html(file_path):
         soup = BeautifulSoup(f, "html.parser")
 
     base_path = os.path.dirname(file_path)
-    missing_assets = []
+    missing_assets: list[str] = []
     border_found = False
     border_source = None
 
-    css_width = css_height = None
-    html_width = html_height = None
+    css_paths: list[str] = []
 
     # ------------------------ CSS Parsing ------------------------
-    css_files = [
-        link.get("href") for link in soup.find_all("link", rel="stylesheet") if link.get("href")
-    ]
+    for link_tag in soup.find_all("link", rel="stylesheet"):
+        href = link_tag.get("href")
+        if not href:
+            continue
+        if href.startswith(("http://", "https://")):
+            # external CSS – skip size/border detection here
+            continue
+        css_path = os.path.join(base_path, href.lstrip("/"))
+        css_paths.append(css_path)
 
-    for css_file in css_files:
-        css_path = os.path.join(base_path, css_file)
         if not os.path.exists(css_path):
             continue
 
-        with open(css_path, "r", encoding="utf-8", errors="replace") as f:
-            css_text = f.read()
+        try:
+            with open(css_path, "r", encoding="utf-8", errors="replace") as f:
+                css_text = f.read()
+        except OSError:
+            continue
 
+        # Border detection in CSS
         if check_border_in_css(css_text):
             border_found = True
             border_source = "CSS"
 
-        w, h = extract_ad_size_from_css(css_path)
-        if w and h:
-            css_width, css_height = w, h
-            results["size_source"] = "CSS"
+    # ------------------------ Detect size using safe heuristic ------------------------
+    bw, bh, size_source = detect_banner_size(soup, css_paths, file_path)
+    if bw and bh:
+        results["banner_size"] = f"{bw}x{bh}"
+        results["size_source"] = size_source
+        # Only treat as error if clearly not one of the standard expected sizes
+        if (bw, bh) not in EXPECTED_BANNER_SIZES:
+            results["errors"].append(
+                f"Banner size {bw}x{bh} is not in expected list. Please double-check spec."
+            )
+    else:
+        results["warnings"].append(
+            "⚠️ Could not confidently determine banner size. Please double-check."
+        )
+
+    # META tag flag
+    meta = soup.find("meta", {"name": "ad.size"})
+    if meta and meta.get("content"):
+        if re.search(r"width=\d+,\s*height=\d+", meta["content"]):
+            results["used_meta_tag"] = True
 
     # ------------------------ Inline border ------------------------
     for tag in soup.find_all(True):
         style = tag.get("style", "")
-        if "border" in style and "1px" in style and "solid" in style:
+        if (
+            "border" in style.lower()
+            and "1px" in style
+            and "solid" in style.lower()
+        ):
             border_found = True
             border_source = "Inline Style"
-
-    # ------------------------ Inline size detection ------------------------
-    for tag in soup.find_all(["div", "body"]):
-        if "style" in tag.attrs:
-            w, h = extract_size_from_inline(tag["style"])
-            if w and h:
-                html_width, html_height = w, h
-                results["size_source"] = "Inline Style"
-                break
-
-    # ------------------------ .adSize ------------------------
-    size_div = soup.find(attrs={"class": "adSize"})
-    if size_div:
-        if "style" in size_div.attrs:
-            w, h = extract_size_from_inline(size_div["style"])
-            if w and h:
-                html_width, html_height = w, h
-                results["size_source"] = ".adSize Inline"
-
-    # ------------------------ META TAG ------------------------
-    meta = soup.find("meta", {"name": "ad.size"})
-    if meta and "content" in meta.attrs:
-        match = re.search(r"width=(\d+),\s*height=(\d+)", meta["content"])
-        if match:
-            html_width = int(match.group(1))
-            html_height = int(match.group(2))
-            results["used_meta_tag"] = True
-            results["size_source"] = "META ad.size"
+            break
 
     # ------------------------ SVG border ------------------------
     for rect in soup.find_all("rect"):
         stroke = rect.get("stroke")
         stroke_w = rect.get("stroke-width")
         try:
-            if stroke and float(stroke_w) == 1:
+            if stroke and stroke_w is not None and float(stroke_w) == 1:
                 border_found = True
                 border_source = "SVG Border"
-        except:
-            pass
-
-    # ------------------------ SVG Click detection ------------------------
-    for svg in soup.find_all("svg"):
-        if svg.get("onclick"):
-            results["warnings"].append("SVG click handler detected.")
-
-        for el in svg.find_all(True):
-            if el.get("id") and el.get("id").lower().startswith("click"):
-                results["warnings"].append("SVG clickable element detected.")
-
-            classes = el.get("class") or []
-            if any("click" in c.lower() for c in classes):
-                results["warnings"].append("SVG clickable class detected.")
-
-            if el.get("onclick"):
-                results["warnings"].append("SVG nested onclick click detected.")
-
-    # ------------------------ Final size ------------------------
-    bw = css_width or html_width
-    bh = css_height or html_height
-
-    if bw and bh:
-        results["banner_size"] = f"{bw}x{bh}"
-        if (bw, bh) not in EXPECTED_BANNER_SIZES:
-            results["errors"].append(f"Invalid banner size: {bw}x{bh}")
-    else:
-        results["warnings"].append("⚠️ Could not determine banner size.")
+                break
+        except Exception:
+            continue
 
     # ------------------------ Final Border ------------------------
     if border_found:
         results["border"] = f"✅ 1px border present ({border_source})"
     else:
-        results["border"] = "❌ Missing 1px border"
+        # Still flexible: this is a warning-tier issue you can interpret
+        results["border"] = "❌ Missing 1px border (or not detected)"
 
     # ------------------------ Missing Assets ------------------------
     for tag in soup.find_all(["img", "script", "link"]):
@@ -249,6 +340,7 @@ def validate_html(file_path):
     # ------------------------ Basic Click Area ------------------------
     clickable = (
         soup.find(id="designContainer")
+        or soup.find(id="viewport")
         or soup.find(id="clickTagMain")
         or soup.find(id="clickLayer")
         or soup.find(id="clickable")
@@ -256,27 +348,36 @@ def validate_html(file_path):
         or soup.find(attrs={"class": "clickable"})
     )
 
+    # Extra: detect JS-style anchor click to clickTag
+    if not clickable:
+        for a in soup.find_all("a"):
+            href = a.get("href") or ""
+            if "window.open(window.clickTag" in href or "clickTag" in href:
+                clickable = a
+                break
+
     if not clickable:
         results["warnings"].append(
-            "No clickable area detected (no HTML click layer or JS click handler found)."
+            "No clickable area detected in HTML (no click layer or obvious click anchor)."
         )
 
     return results
 
 
 # -------------------------------------------------------
-# JS VALIDATION (UPGRADED)
+# JS VALIDATION
 # -------------------------------------------------------
-def validate_js(file_path):
+def validate_js(file_path: str) -> dict:
     results = {"warnings": [], "errors": [], "duration": 0, "isi_duration": 0}
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             js = f.read()
-    except:
+    except Exception:
         results["errors"].append("Error reading JS file.")
         return results
 
+    # Strip single-line comments for easier regex
     js = re.sub(r"//.*", "", js)
 
     # ------------------------ JS-click detection ------------------------
@@ -286,8 +387,8 @@ def validate_js(file_path):
         r"document\.onclick",
         r"onclick\s*=",
         r"Enabler\.exit",
-        r"exit\(",
-        r"clickTag",
+        r"\bexit\(",
+        r"\bclickTag\b",
     ]
     js_click_found = any(re.search(p, js) for p in click_patterns)
     if js_click_found:
@@ -309,7 +410,7 @@ def validate_js(file_path):
     frames = [float(d) for d in re.findall(r"frameDelay\s*=\s*(\d+\.?\d*)", js)]
     animation_duration = sum(delays) or sum(frames)
 
-    isi_scroll = 0
+    isi_scroll = 0.0
     if "scrollTo" in js or "ISIscroll" in js:
         m = re.search(r"scrollSpeed\s*=\s*(\d+\.?\d*)", js)
         isi_scroll = float(m.group(1)) if m else 10.0
@@ -320,9 +421,13 @@ def validate_js(file_path):
     results["isi_duration"] = round(isi_scroll, 1)
 
     if total > ANIMATION_MAX_DURATION:
-        results["errors"].append(f"Animation exceeds limit: {total:.1f}s")
+        results["errors"].append(
+            f"Animation exceeds limit: {total:.1f}s (max {ANIMATION_MAX_DURATION}s)"
+        )
     elif total >= ANIMATION_WARNING_THRESHOLD:
-        results["warnings"].append(f"Animation approaching limit: {total:.1f}s")
+        results["warnings"].append(
+            f"Animation approaching limit: {total:.1f}s (max {ANIMATION_MAX_DURATION}s)"
+        )
 
     # ------------------------ Loop Count ------------------------
     loops = re.findall(r"repeat\s*:\s*(\d+|Infinity|-1)", js)
@@ -337,11 +442,19 @@ def validate_js(file_path):
 # Preview Route
 # -------------------------------------------------------
 @app.route("/preview/<path:folder>/<filename>")
-def preview_banner(folder, filename):
+def preview_banner(folder: str, filename: str):
+    """
+    Serve a specific HTML file for preview.
+    folder == "_root_" means files directly under UPLOAD_FOLDER.
+    """
     if "__MACOSX" in folder or filename.startswith("."):
         return "Invalid preview request", 404
 
-    folder_path = os.path.join(UPLOAD_FOLDER, folder)
+    if folder == "_root_":
+        folder_path = UPLOAD_FOLDER
+    else:
+        folder_path = os.path.join(UPLOAD_FOLDER, folder)
+
     full = os.path.join(folder_path, filename)
 
     if not os.path.exists(full):
@@ -380,36 +493,44 @@ def validate_file():
     file.save(file_path)
 
     file_size_kb = os.path.getsize(file_path) / 1024
-    preview_links = []
-    validation = {"html": {}, "js": {}}
+    preview_links: list[str] = []
+    validation: dict = {"html": {}, "js": {}}
     durations = {"animation": 0.0, "isi": 0.0, "total": 0.0}
 
     # ------------------------ ZIP Handling ------------------------
-    if filename.endswith(".zip"):
+    if filename.lower().endswith(".zip"):
         extracted = extract_zip(file_path)
         if not extracted:
             return jsonify({"error": "Invalid ZIP file"}), 400
 
-        html_files, js_files = [], []
+        html_files: list[str] = []
+        js_files: list[str] = []
 
         for root, _, files in os.walk(extracted):
+            if "__MACOSX" in root:
+                continue
             for f in files:
                 fp = os.path.join(root, f)
-                if f.endswith(".html") and "__MACOSX" not in root:
+                if f.lower().endswith(".html"):
                     html_files.append(fp)
-                elif f.endswith(".js") and "__MACOSX" not in root:
+                elif f.lower().endswith(".js"):
                     js_files.append(fp)
 
         if not html_files:
-            return jsonify({"error": "No HTML file in ZIP"}), 400
+            return jsonify({"error": 'No HTML file found in ZIP.'}), 400
 
+        # HTML validation + preview link per HTML
         for html in html_files:
             html_name = os.path.basename(html)
             validation["html"][html_name] = validate_html(html)
 
             rel_folder = os.path.relpath(os.path.dirname(html), UPLOAD_FOLDER)
-            preview_links.append(f"{request.host_url}preview/{rel_folder}/{html_name}")
+            preview_url = url_for(
+                "preview_banner", folder=rel_folder, filename=html_name
+            )
+            preview_links.append(preview_url)
 
+        # JS validation
         for js in js_files:
             js_name = os.path.basename(js)
             res = validate_js(js)
@@ -418,20 +539,23 @@ def validate_file():
             durations["isi"] += res["isi_duration"]
 
     # ------------------------ Single HTML Upload ------------------------
-    elif filename.endswith(".html"):
+    elif filename.lower().endswith(".html"):
         validation["html"][filename] = validate_html(file_path)
-        preview_links.append(f"{request.host_url}preview/{filename}")
+        preview_url = url_for("preview_banner", folder="_root_", filename=filename)
+        preview_links.append(preview_url)
 
     durations["animation"] = round(durations["animation"], 1)
     durations["isi"] = round(durations["isi"], 1)
-    durations["total"] = durations["animation"] + durations["isi"]
+    durations["total"] = round(durations["animation"] + durations["isi"], 1)
 
-    return jsonify({
-        "validation_results": validation,
-        "previews": preview_links,
-        "file_size_kb": round(file_size_kb, 2),
-        "durations": durations
-    })
+    return jsonify(
+        {
+            "validation_results": validation,
+            "previews": preview_links,
+            "file_size_kb": round(file_size_kb, 2),
+            "durations": durations,
+        }
+    )
 
 
 # -------------------------------------------------------
@@ -460,13 +584,15 @@ def word_report():
     html_results = validation.get("html", {}) or {}
     js_results = validation.get("js", {}) or {}
 
-    # ---- Summary calculations (same logic as UI) ----
+    # ---- Summary calculations ----
     missing_assets = any(
         any("Missing assets" in e for e in (res.get("errors") or []))
         for res in html_results.values()
     )
+
     banner_sizes = [
-        res.get("banner_size") for res in html_results.values()
+        res.get("banner_size")
+        for res in html_results.values()
         if res.get("banner_size")
     ]
     first_html = next(iter(html_results.values()), None)
@@ -494,10 +620,10 @@ def word_report():
         p.add_run("File Size: ").bold = True
         p.add_run(f"{size_kb} KB")
 
-    # Summary lines
+    # Summary lines – flexible style (Option B)
     doc.add_paragraph(
-        "Assets Check: " +
-        ("✅ All assets present" if not missing_assets else "❌ Missing assets")
+        "Assets Check: "
+        + ("✅ All assets present" if not missing_assets else "❌ Missing assets – please review.")
     )
 
     if banner_sizes:
@@ -507,30 +633,27 @@ def word_report():
         doc.add_paragraph("Border Check: " + first_html.get("border", ""))
 
     doc.add_paragraph(
-        "HTML Validation: " +
-        ("✅ Checked" if html_results else "❌ Not found")
+        "HTML Validation: " + ("✅ Checked" if html_results else "❌ No HTML files found.")
     )
 
     doc.add_paragraph(
-        "Loop Count: " +
-        ("✅ Within limit" if not loop_issue else "❌ Loop count exceeds limit")
+        "Loop Count: "
+        + (
+            "✅ Within limit"
+            if not loop_issue
+            else "❌ Loop count exceeds recommended limit – please review."
+        )
     )
 
     doc.add_paragraph(
-        "Clickable Area: " +
-        ("HTML/JS click detected" if not clickable_warning
-         else "No clickable area detected")
+        "Clickable Area: "
+        + ("HTML/JS click detected or not flagged" if not clickable_warning
+           else "No clickable area detected – please check manually.")
     )
 
-    doc.add_paragraph(
-        f"Animation Duration: {durations.get('animation', 0)}s"
-    )
-    doc.add_paragraph(
-        f"ISI Scroll Duration: {durations.get('isi', 0)}s"
-    )
-    doc.add_paragraph(
-        f"Total Estimated Duration: {durations.get('total', 0)}s"
-    )
+    doc.add_paragraph(f"Animation Duration: {durations.get('animation', 0)}s")
+    doc.add_paragraph(f"ISI Scroll Duration: {durations.get('isi', 0)}s")
+    doc.add_paragraph(f"Total Estimated Duration: {durations.get('total', 0)}s")
 
     # ---- Detailed sections ----
     if html_results:
@@ -553,12 +676,8 @@ def word_report():
         doc.add_heading("JS Details", level=2)
         for name, res in js_results.items():
             doc.add_heading(name, level=3)
-            doc.add_paragraph(
-                f"Animation Duration: {res.get('duration', 0)}s"
-            )
-            doc.add_paragraph(
-                f"ISI Scroll Duration: {res.get('isi_duration', 0)}s"
-            )
+            doc.add_paragraph(f"Animation Duration: {res.get('duration', 0)}s")
+            doc.add_paragraph(f"ISI Scroll Duration: {res.get('isi_duration', 0)}s")
             if res.get("errors"):
                 doc.add_paragraph("Errors:")
                 for err in res["errors"]:
@@ -579,7 +698,9 @@ def word_report():
         buf,
         as_attachment=True,
         download_name=f"{safe_name}.docx",
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        mimetype=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
     )
 
 
@@ -588,4 +709,5 @@ def word_report():
 # -------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
+    # On Fly this is ignored (they run via entrypoint), but fine locally.
     app.run(host="0.0.0.0", port=port)
